@@ -1,2 +1,3 @@
 - our default webserver for development and testing purpose is Node.js.
 - for the backend database, we are using SQLite
+- When starting the webserver, do not run "npm start" in the foreground, as that will block.  Run it in the background if you must restart it.  also, assume that it is already running.

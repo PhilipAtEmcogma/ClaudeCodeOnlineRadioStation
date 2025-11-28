@@ -1,0 +1,426 @@
+/* Radio Calico Brand Stylesheet - Horizontal Layout */
+/* Based on RadioCalico Style Guide and Layout */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Open+Sans:wght@400;600&display=swap');
+
+/* CSS Variables - Radio Calico Color Palette */
+:root {
+    /* Brand Colors */
+    --mint: #D8F2D5;
+    --forest-green: #1F4E23;
+    --teal: #38A29D;
+    --calico-orange: #EFA63C;
+    --charcoal: #231F20;
+    --cream: #F5EADA;
+    --white: #FFFFFF;
+    --header-bg: #555555;
+    --player-bar-bg: #4A4A4A;
+
+    /* Typography */
+    --font-heading: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    /* Spacing */
+    --spacing-xs: 8px;
+    --spacing-sm: 16px;
+    --spacing-md: 24px;
+    --spacing-lg: 32px;
+    --spacing-xl: 48px;
+    --spacing-xxl: 64px;
+
+    /* Layout */
+    --max-width: 1400px;
+}
+
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--charcoal);
+    background: var(--white);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.site-header {
+    background: var(--header-bg);
+    padding: var(--spacing-sm) 0;
+    width: 100%;
+}
+
+.header-content {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: 0 var(--spacing-md);
+}
+
+.header-logo {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.site-title {
+    font-family: var(--font-heading);
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--white);
+    margin: 0;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    background: var(--white);
+    padding: var(--spacing-xl) var(--spacing-md);
+}
+
+.content-wrapper {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--spacing-xl);
+    align-items: start;
+}
+
+/* Album Section */
+.album-section {
+    position: relative;
+}
+
+.album-art-container {
+    position: relative;
+    width: 540px;
+    height: 540px;
+}
+
+.album-art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.year-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%);
+    color: var(--white);
+    font-family: var(--font-heading);
+    font-size: 48px;
+    font-weight: 700;
+    padding: var(--spacing-md) var(--spacing-lg);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 30% 100%);
+    min-width: 180px;
+    text-align: center;
+    transform: rotate(0deg);
+}
+
+/* Track Section */
+.track-section {
+    padding-top: var(--spacing-md);
+}
+
+.track-artist {
+    font-family: var(--font-heading);
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--charcoal);
+    line-height: 1.2;
+    margin-bottom: var(--spacing-sm);
+}
+
+.track-title {
+    font-family: var(--font-heading);
+    font-size: 42px;
+    font-weight: 600;
+    color: var(--charcoal);
+    line-height: 1.3;
+    margin-bottom: var(--spacing-md);
+}
+
+.track-album {
+    font-family: var(--font-body);
+    font-size: 20px;
+    color: var(--charcoal);
+    margin-bottom: var(--spacing-lg);
+    line-height: 1.4;
+}
+
+/* Quality Info */
+.quality-info {
+    margin-bottom: var(--spacing-lg);
+}
+
+.quality-line {
+    font-family: var(--font-body);
+    font-size: 16px;
+    color: #888;
+    font-style: italic;
+    line-height: 1.6;
+}
+
+/* Rating Section */
+.rating-section {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xl);
+    font-size: 18px;
+}
+
+.rating-label {
+    font-family: var(--font-body);
+    color: var(--charcoal);
+}
+
+.rating-emoji {
+    background: transparent;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    padding: 4px;
+    transition: transform 0.2s;
+}
+
+.rating-emoji:hover {
+    transform: scale(1.2);
+}
+
+.rating-emoji.active {
+    transform: scale(1.3);
+    filter: drop-shadow(0 0 8px rgba(239, 166, 60, 0.6));
+}
+
+.rating-counts {
+    font-family: var(--font-body);
+    color: #888;
+    font-size: 16px;
+    margin-left: var(--spacing-xs);
+}
+
+/* Player Bar */
+.player-bar {
+    background: var(--player-bar-bg);
+    border-radius: 8px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    max-width: 600px;
+}
+
+.play-btn {
+    background: transparent;
+    border: none;
+    color: var(--white);
+    font-size: 24px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.play-btn:hover {
+    transform: scale(1.1);
+}
+
+.time-display {
+    font-family: var(--font-body);
+    color: var(--white);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.volume-icon {
+    color: var(--white);
+    font-size: 20px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.volume-range {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #666;
+    outline: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    min-width: 100px;
+}
+
+.volume-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--white);
+    cursor: pointer;
+}
+
+.volume-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--white);
+    cursor: pointer;
+    border: none;
+}
+
+/* Footer */
+.site-footer {
+    background: var(--mint);
+    padding: var(--spacing-xl) var(--spacing-md);
+    width: 100%;
+}
+
+.footer-content {
+    max-width: var(--max-width);
+    margin: 0 auto;
+}
+
+.footer-heading {
+    font-family: var(--font-heading);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--charcoal);
+    margin-bottom: var(--spacing-md);
+}
+
+.previous-tracks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.track-item {
+    font-family: var(--font-body);
+    font-size: 16px;
+    color: var(--charcoal);
+    line-height: 1.8;
+}
+
+.track-item .artist {
+    font-weight: 600;
+    color: var(--charcoal);
+}
+
+.track-item .title {
+    font-style: italic;
+    color: #555;
+}
+
+.empty-state {
+    font-family: var(--font-body);
+    color: #888;
+    font-style: italic;
+}
+
+/* Status (hidden by default) */
+.status {
+    display: none;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .album-art-container {
+        width: 450px;
+        height: 450px;
+    }
+
+    .track-artist {
+        font-size: 44px;
+    }
+
+    .track-title {
+        font-size: 32px;
+    }
+
+    .year-badge {
+        font-size: 36px;
+        min-width: 140px;
+    }
+}
+
+@media (max-width: 968px) {
+    .content-wrapper {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    .album-art-container {
+        width: 100%;
+        max-width: 500px;
+        height: auto;
+        aspect-ratio: 1;
+        margin: 0 auto;
+    }
+
+    .track-section {
+        padding-top: 0;
+    }
+
+    .track-artist {
+        font-size: 36px;
+    }
+
+    .track-title {
+        font-size: 28px;
+    }
+}
+
+@media (max-width: 640px) {
+    .site-title {
+        font-size: 24px;
+    }
+
+    .header-logo {
+        width: 40px;
+        height: 40px;
+    }
+
+    .track-artist {
+        font-size: 28px;
+    }
+
+    .track-title {
+        font-size: 22px;
+    }
+
+    .track-album {
+        font-size: 16px;
+    }
+
+    .player-bar {
+        flex-wrap: wrap;
+    }
+
+    .year-badge {
+        font-size: 28px;
+        min-width: 100px;
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+}

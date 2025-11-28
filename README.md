@@ -1,6 +1,6 @@
-# Radio Streaming Web Application
+# Radio Calico - Live Streaming Web Application
 
-A full-featured live radio streaming web application with HLS audio streaming, real-time metadata, listener analytics, song ratings, and request management.
+A full-featured live radio streaming web application with HLS audio streaming, real-time metadata, listener analytics, song ratings, and request management. Features a professional design following the Radio Calico brand style guide with a modern horizontal layout.
 
 ## Features
 
@@ -27,6 +27,73 @@ A full-featured live radio streaming web application with HLS audio streaming, r
 - **Song Requests** - Users can request songs with optional messages
 - **Feedback System** - Collect user feedback with ratings (1-5 stars)
 - **Request Management** - Approve, reject, or mark requests as played
+
+## Design & Branding
+
+### Radio Calico Brand Identity
+
+The application follows the official **Radio Calico Style Guide** with a cohesive brand identity:
+
+#### Color Palette
+- **Mint** (#D8F2D5) - Background accents and footer
+- **Forest Green** (#1F4E23) - Primary buttons and headings
+- **Teal** (#38A29D) - Navigation and interactive elements
+- **Calico Orange** (#EFA63C) - Call-to-action highlights
+- **Charcoal** (#231F20) - Body text and icons
+- **Cream** (#F5EADA) - Secondary backgrounds
+- **White** (#FFFFFF) - Text on dark backgrounds
+
+#### Typography
+- **Headings:** Montserrat (500-700 weight)
+- **Body Text:** Open Sans (400-600 weight)
+- **Fallback Stack:** System fonts for optimal performance
+
+#### Logo
+Features the iconic Radio Calico logo: a calico cat wearing headphones on a mint green circular background, with a forest green border.
+
+### User Interface Layout
+
+The application uses a modern **horizontal two-column layout**:
+
+#### Header (Full-width)
+- Dark gray (#555) background spanning full viewport width
+- Centered logo (50px circular) and "Radio Calico" title
+- Clean, professional navigation bar appearance
+
+#### Main Content (Two Columns)
+**Left Column - Album Display:**
+- Large 540×540px album artwork
+- Dynamic year badge (top-right corner, diagonal red accent)
+- Year extracted from song title metadata
+- High-quality shadow effects
+
+**Right Column - Track Information:**
+- Large artist name (56px Montserrat Bold)
+- Song title (42px Montserrat SemiBold)
+- Album name (20px Open Sans)
+- Source quality indicator (updates per track)
+- Stream quality display (constant 48kHz FLAC/HLS)
+- Rating interface with thumbs up/down emojis
+- Compact player controls (dark gray bar)
+
+#### Player Controls
+- Minimalist dark gray bar (#4A4A4A)
+- Play/Pause button
+- Live time display (format: "0:35 / Live")
+- Volume slider with speaker icon
+- No bulky cards or excessive padding
+
+#### Footer (Full-width)
+- Mint green (#D8F2D5) background
+- "Previous tracks:" heading (24px Montserrat SemiBold)
+- Simple list format: **Artist:** *Song Title*
+- Recently played tracks from metadata
+
+### Responsive Design
+- Desktop: Full horizontal two-column layout
+- Tablet (< 1200px): Reduced album art size, adjusted typography
+- Mobile (< 968px): Stacks vertically, centered album art
+- Maintains brand colors and readability at all sizes
 
 ## Tech Stack
 
@@ -80,16 +147,21 @@ A full-featured live radio streaming web application with HLS audio streaming, r
 
 ```
 Radio/
-├── server.js                   # Main Express server & API endpoints
-├── package.json                # Node.js dependencies
-├── radio.db                    # SQLite database (auto-created)
+├── server.js                      # Main Express server & API endpoints
+├── package.json                   # Node.js dependencies
+├── radio.db                       # SQLite database (auto-created)
 ├── public/
-│   └── index.html             # Radio player frontend
-├── Dockerfile                  # Docker container configuration
-├── docker-compose.yml          # Docker orchestration
-├── stream_URL.txt             # HLS stream URL
-├── CLAUDE.md                   # Development instructions
-└── README.md                   # This file
+│   ├── index.html                # Radio player frontend (HTML)
+│   ├── styles.css                # RadioCalico brand stylesheet
+│   └── RadioCalicoLogoTM.png     # Brand logo image
+├── RadioCalico_Style_Guide.txt    # Official brand style guide
+├── RadioCalicoLayout.png          # Reference layout mockup
+├── RadioCalicoLogoTM.png          # Logo source file
+├── Dockerfile                     # Docker container configuration
+├── docker-compose.yml             # Docker orchestration
+├── stream_URL.txt                # HLS stream URL
+├── CLAUDE.md                      # Development instructions
+└── README.md                      # This file
 ```
 
 ## API Documentation
@@ -157,7 +229,7 @@ Radio/
 
 ### Stream URL
 The HLS stream URL is configured in:
-- **Frontend:** `public/index.html` (line 535)
+- **Frontend:** `public/index.html` (JavaScript section, `streamUrl` constant)
 - **Reference:** `stream_URL.txt`
 
 Current stream: `https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
@@ -166,10 +238,24 @@ Current stream: `https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
 Metadata is fetched from: `https://d3d4yli4hf5bmh.cloudfront.net/metadatav2.json`
 
 The metadata includes:
-- title, artist, album
-- bit_depth, sample_rate
-- is_explicit, is_new
-- prev_artist_1-5, prev_title_1-5 (recently played)
+- **Track info:** title, artist, album
+- **Audio quality:** bit_depth, sample_rate
+- **Content flags:** is_explicit, is_new
+- **Recently played:** prev_artist_1-5, prev_title_1-5
+
+Metadata is automatically fetched every 5 seconds while the player is active and updates:
+- Artist name, song title, album name
+- Album artwork (with cache-busting)
+- Source quality (bit depth and sample rate from original file)
+- Year badge (extracted from title if present in format "Title (Year)")
+- Recently played tracks in the footer
+
+### Frontend Styling
+The frontend uses a modular CSS architecture:
+- **`public/styles.css`** - Contains all Radio Calico brand styles
+- **Google Fonts** - Montserrat and Open Sans loaded via CDN
+- **CSS Variables** - Brand colors, spacing, and typography defined in `:root`
+- **Responsive breakpoints:** 1200px, 968px, 640px
 
 ### Server Port
 Default port: 3000 (configurable via `PORT` environment variable)
@@ -228,6 +314,33 @@ npm start
 2. The server automatically reloads (thanks to nodemon)
 3. Database changes persist in `radio.db`
 4. Frontend changes are immediately reflected (static file serving)
+
+### Customizing the Design
+
+The Radio Calico design can be customized by editing:
+
+**Brand Colors (`public/styles.css`):**
+```css
+:root {
+    --mint: #D8F2D5;
+    --forest-green: #1F4E23;
+    --teal: #38A29D;
+    --calico-orange: #EFA63C;
+    /* ... modify these values ... */
+}
+```
+
+**Typography:**
+- Change font families in the CSS `@import` statement
+- Update `--font-heading` and `--font-body` CSS variables
+
+**Layout Dimensions:**
+- Album art size: `.album-art-container` width/height
+- Max content width: `--max-width` CSS variable (default 1400px)
+- Responsive breakpoints: `@media` queries at bottom of CSS
+
+**Logo:**
+Replace `public/RadioCalicoLogoTM.png` with your own logo (recommended: 512×512px PNG with transparency)
 
 ### Adding Dependencies
 
@@ -309,6 +422,13 @@ PORT=3001 npm start
 - Verify API is responding: `curl http://localhost:3000/api/health`
 - Check server logs for database errors
 
+### Metadata Not Updating
+- Metadata refreshes every 5 seconds while playing
+- Check browser console for fetch errors
+- Verify metadata URL is accessible: `curl https://d3d4yli4hf5bmh.cloudfront.net/metadatav2.json`
+- Ensure CORS is properly configured
+- Try clicking play/pause to restart metadata fetching
+
 ### Migration Errors on Startup
 - Backup your database: `cp radio.db radio.db.backup`
 - Delete and recreate: `rm radio.db && npm start`
@@ -319,7 +439,35 @@ PORT=3001 npm start
 - **Chrome/Edge:** Full support (HLS.js)
 - **Firefox:** Full support (HLS.js)
 - **Safari:** Native HLS support
-- **Mobile browsers:** Fully responsive design
+- **Mobile browsers:** Fully responsive design with optimized layouts
+  - Vertical stacking on screens < 968px
+  - Touch-friendly controls and tap targets
+  - Maintains brand aesthetics on all screen sizes
+
+## Design Reference Files
+
+The project includes several design reference files:
+
+- **`RadioCalico_Style_Guide.txt`** - Complete brand style guide with:
+  - Color palette with hex/RGB values
+  - Typography specifications (fonts, sizes, weights)
+  - UI component guidelines (buttons, forms, audio controls)
+  - Layout and spacing rules
+  - Voice and tone guidelines
+
+- **`RadioCalicoLayout.png`** - Reference mockup showing:
+  - Ideal two-column layout
+  - Header and footer design
+  - Album art positioning with year badge
+  - Track information hierarchy
+  - Player control bar appearance
+
+- **`RadioCalicoLogoTM.png`** - High-resolution brand logo
+  - Transparent PNG format
+  - Features calico cat with headphones
+  - Mint green circular background with forest green border
+
+These files serve as the design foundation for the application and should be consulted when making visual changes.
 
 ## License
 
