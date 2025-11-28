@@ -1,0 +1,2 @@
+- our default webserver for development and testing purpose is Node.js.
+- for the backend database, we are using SQLite
