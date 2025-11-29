@@ -102,6 +102,7 @@ The application uses a modern **horizontal two-column layout**:
 - **Database:** SQLite with better-sqlite3
 - **Audio Streaming:** HLS.js
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
+- **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
 - **Auto-reload:** Nodemon (development)
 
 ## Prerequisites
@@ -128,6 +129,12 @@ The application uses a modern **horizontal two-column layout**:
    - Open your browser to: http://localhost:3000
    - The server will automatically reload when you make changes (via nodemon)
 
+4. **Run tests (optional):**
+   ```bash
+   npm test                 # Run all tests
+   npm run test:coverage    # Run with coverage report
+   ```
+
 ### Docker Deployment
 
 1. **Start the application:**
@@ -149,12 +156,31 @@ The application uses a modern **horizontal two-column layout**:
 Radio/
 ├── server.js                      # Main Express server & API endpoints
 ├── package.json                   # Node.js dependencies
-├── radio.db                       # SQLite database (auto-created)
+├── radio.db                       # SQLite database (auto-created, gitignored)
 ├── public/
 │   ├── index.html                # Radio player HTML structure
 │   ├── app.js                    # Client-side JavaScript (player logic)
 │   ├── styles.css                # RadioCalico brand stylesheet
 │   └── RadioCalicoLogoTM.png     # Brand logo image
+├── tests/                         # Testing framework
+│   ├── backend/
+│   │   ├── unit/                 # Backend unit tests
+│   │   │   └── fingerprinting.test.js
+│   │   ├── integration/          # Backend integration tests
+│   │   │   └── ratings-api.test.js
+│   │   └── helpers/              # Test utilities
+│   │       ├── db-setup.js       # In-memory database setup
+│   │       ├── mock-requests.js  # Request/response factories
+│   │       └── setup.js          # Test configuration
+│   └── frontend/
+│       ├── unit/                 # Frontend unit tests
+│       │   └── rating-display.test.js
+│       └── helpers/              # Test utilities
+│           ├── setup-dom.js      # DOM fixture helpers
+│           ├── msw-handlers.js   # API mock handlers
+│           └── setup.js          # Test configuration
+├── jest.config.js                 # Jest test configuration
+├── TESTING.md                     # Testing documentation
 ├── RadioCalico_Style_Guide.txt    # Official brand style guide
 ├── RadioCalicoLayout.png          # Reference layout mockup
 ├── RadioCalicoLogoTM.png          # Logo source file
@@ -225,6 +251,63 @@ Radio/
 ### feedback
 - Stores user feedback and ratings
 - Fields: id, listener_name, email, message, rating, created_at
+
+## Testing
+
+The application includes a comprehensive Jest-based testing framework covering both backend and frontend functionality.
+
+### Running Tests
+
+```bash
+npm test                 # Run all 40 tests (backend + frontend)
+npm run test:backend     # Run backend tests only (23 tests)
+npm run test:frontend    # Run frontend tests only (17 tests)
+npm run test:watch       # Watch mode - auto-rerun on file changes
+npm run test:coverage    # Generate coverage report
+```
+
+### Test Coverage
+
+**Current Status:** ✅ 40 tests passing
+
+**Backend Tests (23 tests):**
+- User fingerprinting (IP extraction, SHA-256 hash generation)
+- Rating API endpoints (POST/GET /api/ratings)
+- Vote submission, changes, and deduplication
+- Multi-user vote aggregation
+- Database unique constraint enforcement
+
+**Frontend Tests (17 tests):**
+- Rating display updates (counts, active states)
+- Rating submission (API calls, error handling)
+- UI state management
+- Network error resilience
+
+### Test Architecture
+
+- **Backend:** Node.js environment with in-memory SQLite databases
+- **Frontend:** JSDOM environment with mocked fetch API
+- **Isolation:** Each test uses a fresh database instance
+- **Speed:** In-memory databases ensure fast test execution
+- **Coverage:** 50% threshold for branches, functions, lines, statements
+
+### Writing Tests
+
+When adding new features, write tests following these patterns:
+
+1. **Backend Unit Tests:** `tests/backend/unit/`
+   - Test individual functions in isolation
+   - Use helper utilities from `tests/backend/helpers/`
+
+2. **Backend Integration Tests:** `tests/backend/integration/`
+   - Test complete API endpoints with Supertest
+   - Use in-memory database from `db-setup.js`
+
+3. **Frontend Unit Tests:** `tests/frontend/unit/`
+   - Test UI functions with jsdom
+   - Mock fetch API for network requests
+
+See `TESTING.md` for detailed documentation, examples, and helper API reference.
 
 ## Configuration
 
@@ -319,6 +402,33 @@ npm start
    - **HTML structure:** Edit `public/index.html`
    - **JavaScript logic:** Edit `public/app.js`
    - **Styling:** Edit `public/styles.css`
+5. **Run tests after changes:**
+   ```bash
+   npm test                 # Verify nothing broke
+   npm run test:watch       # Auto-rerun tests during development
+   ```
+
+### Test-Driven Development
+
+For best results, follow this workflow:
+
+1. **Write a failing test** for the new feature
+2. **Implement the feature** until the test passes
+3. **Refactor** while keeping tests green
+4. **Check coverage** with `npm run test:coverage`
+
+Example workflow:
+```bash
+# Start test watch mode in one terminal
+npm run test:watch
+
+# Edit code in your editor
+# Tests automatically rerun on save
+
+# When done, check coverage
+npm run test:coverage
+open coverage/lcov-report/index.html
+```
 
 ### Customizing the Design
 
@@ -380,6 +490,8 @@ Check console output for debugging.
 
 ### Production Checklist
 
+- [ ] **Run tests:** `npm test` (ensure all 40 tests pass)
+- [ ] **Check coverage:** `npm run test:coverage` (verify thresholds met)
 - [ ] Set `NODE_ENV=production`
 - [ ] Configure proper CORS origins
 - [ ] Use a reverse proxy (Nginx, Caddy)
@@ -439,6 +551,27 @@ PORT=3001 npm start
 - Delete and recreate: `rm radio.db && npm start`
 - Check file permissions
 
+### Test Failures
+```bash
+# Clear Jest cache
+npx jest --clearCache
+
+# Reinstall dependencies
+rm -rf node_modules package-lock.json
+npm install
+
+# Run tests with verbose output
+npm test -- --verbose
+
+# Run specific test file
+npm test -- tests/backend/unit/fingerprinting.test.js
+```
+
+### Coverage Threshold Errors
+If tests pass but coverage thresholds fail, either:
+- Add more tests to increase coverage
+- Adjust thresholds in `jest.config.js` (lower the percentages)
+
 ## Browser Compatibility
 
 - **Chrome/Edge:** Full support (HLS.js)
@@ -486,6 +619,7 @@ These files serve as the design foundation for the application and should be con
 
 - Built with Express.js and HLS.js
 - Uses better-sqlite3 for database management
+- Tested with Jest, Supertest, and Testing Library
 - Fingerprinting techniques for privacy-preserving user tracking
 
 ## Support

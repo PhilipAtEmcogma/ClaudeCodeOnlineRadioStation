@@ -6,3 +6,7 @@ README.md
 .env
 .DS_Store
 *.db
+coverage
+tests
+TESTING.md
+jest.config.js
