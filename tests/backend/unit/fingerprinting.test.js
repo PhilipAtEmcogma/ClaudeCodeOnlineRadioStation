@@ -3,30 +3,8 @@
  * Tests server-side fingerprint generation from request headers
  */
 
-const crypto = require('crypto');
+const { getClientIP, getUserFingerprint } = require('../../../server');
 const { createMockRequest } = require('../helpers/mock-requests');
-
-// NOTE: These functions are extracted from server.js for testing
-// TODO: Export these from server.js or move to a separate module
-
-function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-         req.headers['x-real-ip'] ||
-         req.connection.remoteAddress ||
-         req.socket.remoteAddress ||
-         req.connection.socket?.remoteAddress ||
-         'unknown';
-}
-
-function getUserFingerprint(req) {
-  const ip = getClientIP(req);
-  const userAgent = req.headers['user-agent'] || '';
-  const acceptLanguage = req.headers['accept-language'] || '';
-  const acceptEncoding = req.headers['accept-encoding'] || '';
-
-  const fingerprintString = `${ip}|${userAgent}|${acceptLanguage}|${acceptEncoding}`;
-  return crypto.createHash('sha256').update(fingerprintString).digest('hex');
-}
 
 describe('getClientIP', () => {
   test('should extract IP from x-forwarded-for header', () => {

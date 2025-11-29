@@ -2,41 +2,34 @@
  * Integration tests for ratings API endpoints
  * Tests POST /api/ratings and GET /api/ratings/:song_id
  *
- * NOTE: This test requires server.js to export the 'app' instance
- * Add this line at the end of server.js: module.exports = { app, db };
- *
- * For now, this demonstrates the testing approach
+ * NOTE: These tests use a mock Express app with an in-memory database
+ * to ensure test isolation. However, they import the real fingerprinting
+ * functions from server.js to test the actual implementation logic.
  */
 
 const request = require('supertest');
 const express = require('express');
-const crypto = require('crypto');
-const { setupTestDatabase, teardownTestDatabase, clearRatings } = require('../helpers/db-setup');
+const { setupTestDatabase, teardownTestDatabase } = require('../helpers/db-setup');
+const { getClientIP, getUserFingerprint } = require('../../../server');
 
-// Mock Express app with ratings endpoints
-// TODO: Replace with actual app from server.js once exported
+// Test constants
+const TEST_IPS = {
+  USER_1: '192.168.1.1',
+  USER_2: '192.168.1.2',
+  USER_3: '192.168.1.3'
+};
+
+const TEST_USER_AGENTS = {
+  BROWSER_1: 'TestBrowser/1.0',
+  BROWSER_2: 'TestBrowser/2.0'
+};
+
+// Create test app with ratings endpoints using real helper functions
 function createTestApp(db) {
   const app = express();
   app.use(express.json());
 
-  // Helper functions (copied from server.js)
-  function getClientIP(req) {
-    return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-           req.headers['x-real-ip'] ||
-           req.connection.remoteAddress ||
-           'unknown';
-  }
-
-  function getUserFingerprint(req) {
-    const ip = getClientIP(req);
-    const userAgent = req.headers['user-agent'] || '';
-    const acceptLanguage = req.headers['accept-language'] || '';
-    const acceptEncoding = req.headers['accept-encoding'] || '';
-    const fingerprintString = `${ip}|${userAgent}|${acceptLanguage}|${acceptEncoding}`;
-    return crypto.createHash('sha256').update(fingerprintString).digest('hex');
-  }
-
-  // POST /api/ratings
+  // POST /api/ratings - Uses real getClientIP and getUserFingerprint
   app.post('/api/ratings', (req, res) => {
     try {
       const { song_id, session_id, rating } = req.body;
@@ -90,7 +83,7 @@ function createTestApp(db) {
     }
   });
 
-  // GET /api/ratings/:song_id
+  // GET /api/ratings/:song_id - Uses real getUserFingerprint
   app.get('/api/ratings/:song_id', (req, res) => {
     try {
       const { song_id } = req.params;
@@ -249,7 +242,7 @@ describe('POST /api/ratings', () => {
     // User 1 votes thumbs up
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.1')
+      .set('x-forwarded-for', TEST_IPS.USER_1)
       .send({
         song_id: 'test-song-1',
         session_id: 'session-1',
@@ -260,7 +253,7 @@ describe('POST /api/ratings', () => {
     // User 2 votes thumbs up (different IP)
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.2')
+      .set('x-forwarded-for', TEST_IPS.USER_2)
       .send({
         song_id: 'test-song-1',
         session_id: 'session-2',
@@ -271,7 +264,7 @@ describe('POST /api/ratings', () => {
     // User 3 votes thumbs down (different IP)
     const response = await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.3')
+      .set('x-forwarded-for', TEST_IPS.USER_3)
       .send({
         song_id: 'test-song-1',
         session_id: 'session-3',
@@ -312,17 +305,17 @@ describe('GET /api/ratings/:song_id', () => {
     // Add some votes
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.1')
+      .set('x-forwarded-for', TEST_IPS.USER_1)
       .send({ song_id: 'test-song', session_id: 's1', rating: 1 });
 
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.2')
+      .set('x-forwarded-for', TEST_IPS.USER_2)
       .send({ song_id: 'test-song', session_id: 's2', rating: 1 });
 
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.3')
+      .set('x-forwarded-for', TEST_IPS.USER_3)
       .send({ song_id: 'test-song', session_id: 's3', rating: -1 });
 
     const response = await request(app)
@@ -337,15 +330,15 @@ describe('GET /api/ratings/:song_id', () => {
     // User votes
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.1')
-      .set('user-agent', 'TestBrowser/1.0')
+      .set('x-forwarded-for', TEST_IPS.USER_1)
+      .set('user-agent', TEST_USER_AGENTS.BROWSER_1)
       .send({ song_id: 'test-song', session_id: 's1', rating: 1 });
 
     // Same user checks ratings (same IP and user-agent = same fingerprint)
     const response = await request(app)
       .get('/api/ratings/test-song')
-      .set('x-forwarded-for', '192.168.1.1')
-      .set('user-agent', 'TestBrowser/1.0')
+      .set('x-forwarded-for', TEST_IPS.USER_1)
+      .set('user-agent', TEST_USER_AGENTS.BROWSER_1)
       .expect(200);
 
     expect(response.body.user_rating).toBe(1);
@@ -355,13 +348,13 @@ describe('GET /api/ratings/:song_id', () => {
     // User 1 votes
     await request(app)
       .post('/api/ratings')
-      .set('x-forwarded-for', '192.168.1.1')
+      .set('x-forwarded-for', TEST_IPS.USER_1)
       .send({ song_id: 'test-song', session_id: 's1', rating: 1 });
 
     // User 2 checks (different IP)
     const response = await request(app)
       .get('/api/ratings/test-song')
-      .set('x-forwarded-for', '192.168.1.2')
+      .set('x-forwarded-for', TEST_IPS.USER_2)
       .expect(200);
 
     expect(response.body.user_rating).toBeNull();

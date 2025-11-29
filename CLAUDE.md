@@ -187,20 +187,20 @@ The application has a comprehensive Jest-based testing framework covering both b
 tests/
 ├── backend/
 │   ├── unit/
-│   │   └── fingerprinting.test.js    # getUserFingerprint(), getClientIP() tests
+│   │   └── fingerprinting.test.js       # getUserFingerprint(), getClientIP() tests
 │   ├── integration/
-│   │   └── ratings-api.test.js       # POST/GET /api/ratings endpoint tests
+│   │   ├── ratings-api.test.js          # POST/GET /api/ratings endpoint tests
+│   │   └── ratings-security.test.js     # Security and edge case tests
 │   └── helpers/
-│       ├── setup.js                  # Backend test configuration
-│       ├── db-setup.js               # In-memory SQLite utilities
-│       └── mock-requests.js          # Mock Express request/response factories
+│       ├── setup.js                     # Backend test configuration
+│       ├── db-setup.js                  # In-memory SQLite utilities
+│       └── mock-requests.js             # Mock Express request/response factories
 └── frontend/
     ├── unit/
-    │   └── rating-display.test.js    # updateRatingDisplay(), submitRating() tests
+    │   └── rating-display.test.js       # updateRatingDisplay(), submitRating() tests
     └── helpers/
-        ├── setup.js                  # Frontend test configuration
-        ├── setup-dom.js              # DOM fixture utilities
-        └── msw-handlers.js           # API mock handlers
+        ├── setup.js                     # Frontend test configuration
+        └── setup-dom.js                 # DOM fixture utilities
 ```
 
 ### Test Configuration
@@ -208,7 +208,7 @@ tests/
 - **Backend tests**: Run in Node.js environment with in-memory SQLite database
 - **Frontend tests**: Run in jsdom environment with mocked fetch API
 - **Coverage**: Configured with 50% thresholds for branches, functions, lines, statements
-- **Current status**: 40 tests passing (23 backend, 17 frontend)
+- **Current status**: All tests passing (40 backend, 17 frontend)
 
 ### Key Test Helpers
 
@@ -233,12 +233,15 @@ When adding new features:
 
 ### Test Coverage Areas
 
-**Backend (server.js:149-503):**
+**Backend (server.js:149-548):**
 - User fingerprinting logic (IP extraction, hash generation)
 - Rating submission (new votes, duplicate votes, vote changes)
 - Rating retrieval (counts, user vote status)
 - Multi-user vote aggregation
 - Unique constraint enforcement
+- SQL injection protection (parameterized queries)
+- Input validation (empty strings, null values, type checking)
+- Edge cases (unicode, special characters, very long strings)
 
 **Frontend (public/app.js:231-307):**
 - Rating display updates (counts, active button states)

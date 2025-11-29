@@ -43,27 +43,27 @@ Opens a detailed HTML coverage report in `coverage/lcov-report/index.html`
 tests/
 ├── backend/
 │   ├── unit/
-│   │   └── fingerprinting.test.js    # Tests getUserFingerprint(), getClientIP()
+│   │   └── fingerprinting.test.js       # Tests getUserFingerprint(), getClientIP()
 │   ├── integration/
-│   │   └── ratings-api.test.js       # Tests POST/GET /api/ratings endpoints
+│   │   ├── ratings-api.test.js          # Tests POST/GET /api/ratings endpoints
+│   │   └── ratings-security.test.js     # Security and edge case tests
 │   └── helpers/
-│       ├── setup.js                  # Backend test setup (runs before each test)
-│       ├── db-setup.js               # In-memory database utilities
-│       └── mock-requests.js          # Request object factories
+│       ├── setup.js                     # Backend test setup (runs before each test)
+│       ├── db-setup.js                  # In-memory database utilities
+│       └── mock-requests.js             # Request object factories
 └── frontend/
     ├── unit/
-    │   └── rating-display.test.js    # Tests rating UI functions
+    │   └── rating-display.test.js       # Tests rating UI functions
     └── helpers/
-        ├── setup.js                  # Frontend test setup (runs before each test)
-        ├── setup-dom.js              # DOM fixture utilities
-        └── msw-handlers.js           # Mock Service Worker API handlers
+        ├── setup.js                     # Frontend test setup (runs before each test)
+        └── setup-dom.js                 # DOM fixture utilities
 ```
 
 ## Test Results
 
-### Current Status: ✅ All 40 Tests Passing
+### Current Status: ✅ All Tests Passing
 
-**Backend Tests (23 tests)**
+**Backend Tests**
 - `fingerprinting.test.js`: 12 tests
   - IP extraction from various header sources
   - Fingerprint generation and consistency
@@ -75,7 +75,13 @@ tests/
   - Vote changes and multiple users
   - GET /api/ratings/:song_id retrieval
 
-**Frontend Tests (17 tests)**
+- `ratings-security.test.js`: 17 tests
+  - SQL injection protection (prepared statements)
+  - Input validation (empty strings, null values, type checking)
+  - Edge cases (very long strings, unicode, special characters)
+  - Malformed input handling
+
+**Frontend Tests**
 - `rating-display.test.js`: 17 tests
   - updateRatingDisplay() DOM updates
   - Active button state management
