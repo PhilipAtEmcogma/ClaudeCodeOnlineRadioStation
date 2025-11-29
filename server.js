@@ -538,3 +538,11 @@ process.on('SIGINT', () => {
   db.close();
   process.exit(0);
 });
+
+// Export for testing
+module.exports = {
+  app,
+  db,
+  getClientIP,
+  getUserFingerprint
+};
