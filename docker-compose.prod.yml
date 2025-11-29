@@ -1,0 +1,34 @@
+services:
+  radio-calico:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: radio-calico-prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist SQLite database
+      - radio-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # SQLite database path (set in server.js or via env var if configurable)
+      - DB_PATH=/app/data/radio.db
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - radio-network
+
+volumes:
+  # Named volume for persistent database storage
+  radio-data:
+    driver: local
+
+networks:
+  radio-network:
+    driver: bridge

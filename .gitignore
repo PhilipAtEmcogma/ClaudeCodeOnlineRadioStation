@@ -1,6 +1,32 @@
+# Dependencies
 node_modules
+
+# Database files (SQLite runtime data)
 *.db
+*.db-shm
+*.db-wal
+
+# Environment variables (may contain secrets)
 .env
+.env.local
+.env.*.local
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Logs
 npm-debug.log
+*.log
+logs
+
+# Test coverage
 coverage
+
+# Personal reference files
+RUNDOCKER.md
+
+# Docker runtime files (keep Docker config files like Dockerfile, docker-compose.yml)
+# These are generated at runtime and should not be committed:
+.docker/
+docker-compose.override.yml

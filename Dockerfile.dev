@@ -1,8 +1,5 @@
-# Legacy Dockerfile - Redirects to Dockerfile.dev
-# For backwards compatibility, this file now uses the development configuration
-#
-# Use Dockerfile.dev for development or Dockerfile.prod for production
-# See DOCKER.md for detailed instructions
+# Development Dockerfile for Radio Calico
+# Optimized for hot-reloading and debugging
 
 FROM node:22-alpine
 
@@ -28,7 +25,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+    CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"
 
 # Start with nodemon for hot-reloading
 CMD ["npm", "run", "dev"]

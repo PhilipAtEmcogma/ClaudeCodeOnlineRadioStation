@@ -1,12 +1,51 @@
+# Dependencies
 node_modules
 npm-debug.log
+yarn-error.log
+
+# Git
 .git
 .gitignore
-README.md
+.github
+
+# Environment files
 .env
-.DS_Store
+.env.local
+.env.*.local
+
+# Database files (will be managed via volumes)
 *.db
+*.db-shm
+*.db-wal
+
+# Testing
 coverage
 tests
 TESTING.md
 jest.config.js
+*.test.js
+
+# Documentation
+README.md
+CLAUDE.md
+RadioCalico_Style_Guide.txt
+RadioCalicoLayout.png
+stream_URL.txt
+
+# Docker files (don't copy Docker configs into the image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# IDE and OS files
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Logs
+logs
+*.log
