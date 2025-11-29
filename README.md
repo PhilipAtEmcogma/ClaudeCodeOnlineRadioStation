@@ -151,7 +151,8 @@ Radio/
 ├── package.json                   # Node.js dependencies
 ├── radio.db                       # SQLite database (auto-created)
 ├── public/
-│   ├── index.html                # Radio player frontend (HTML)
+│   ├── index.html                # Radio player HTML structure
+│   ├── app.js                    # Client-side JavaScript (player logic)
 │   ├── styles.css                # RadioCalico brand stylesheet
 │   └── RadioCalicoLogoTM.png     # Brand logo image
 ├── RadioCalico_Style_Guide.txt    # Official brand style guide
@@ -229,7 +230,7 @@ Radio/
 
 ### Stream URL
 The HLS stream URL is configured in:
-- **Frontend:** `public/index.html` (JavaScript section, `streamUrl` constant)
+- **Frontend:** `public/app.js` (line 20, `streamUrl` constant)
 - **Reference:** `stream_URL.txt`
 
 Current stream: `https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
@@ -250,11 +251,12 @@ Metadata is automatically fetched every 5 seconds while the player is active and
 - Year badge (extracted from title if present in format "Title (Year)")
 - Recently played tracks in the footer
 
-### Frontend Styling
-The frontend uses a modular CSS architecture:
-- **`public/styles.css`** - Contains all Radio Calico brand styles
+### Frontend Architecture
+The frontend uses a clean separation of concerns:
+- **`public/index.html`** - HTML structure and semantic markup only
+- **`public/app.js`** - All client-side JavaScript (HLS player, metadata fetching, ratings, fingerprinting)
+- **`public/styles.css`** - All Radio Calico brand styles with CSS variables
 - **Google Fonts** - Montserrat and Open Sans loaded via CDN
-- **CSS Variables** - Brand colors, spacing, and typography defined in `:root`
 - **Responsive breakpoints:** 1200px, 968px, 640px
 
 ### Server Port
@@ -272,7 +274,7 @@ The server generates a SHA-256 hash from:
 - Accept-Encoding header
 
 ### Client-Side Fingerprinting
-The frontend generates a fingerprint using:
+The frontend (`public/app.js`) generates a fingerprint using:
 - Canvas fingerprinting
 - User-Agent string
 - Screen resolution and color depth
@@ -311,9 +313,12 @@ npm start
 ### Making Changes
 
 1. Edit files in the project directory
-2. The server automatically reloads (thanks to nodemon)
+2. The server automatically reloads when you edit `server.js` (thanks to nodemon)
 3. Database changes persist in `radio.db`
 4. Frontend changes are immediately reflected (static file serving)
+   - **HTML structure:** Edit `public/index.html`
+   - **JavaScript logic:** Edit `public/app.js`
+   - **Styling:** Edit `public/styles.css`
 
 ### Customizing the Design
 
