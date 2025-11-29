@@ -1,8 +1,5 @@
-# Legacy Dockerfile - Redirects to Dockerfile.dev
-# For backwards compatibility, this file now uses the development configuration
-#
-# Use Dockerfile.dev for development or Dockerfile.prod for production
-# See DOCKER.md for detailed instructions
+# Development Dockerfile for Radio Calico
+# Optimized for hot-reloading and debugging
 
 FROM node:22-alpine
 

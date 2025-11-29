@@ -13,6 +13,7 @@ Radio Calico is a full-featured live radio streaming web application with HLS au
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3 with HLS.js for audio streaming
 - **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
 - **Development:** Nodemon for auto-reload
+- **Containerization:** Docker with separate dev/prod configurations
 
 ## Development Commands
 
@@ -30,10 +31,36 @@ npm install
 ```
 
 ### Docker commands
+
+**⚠️ PREREQUISITE:** Docker Desktop must be running before executing any Docker commands. Users should start Docker Desktop from Start Menu and wait for the whale icon to appear steady in the system tray. Verify with `docker ps`.
+
+**Development mode** (hot-reloading, source code mounted):
 ```bash
-docker-compose up --build    # Start with Docker
-docker-compose down          # Stop Docker containers
+docker-compose up --build              # Start dev server (foreground)
+docker-compose up -d --build           # Start dev server (background/detached)
+docker-compose logs -f                 # View logs (follow mode)
+docker-compose exec radio-calico-dev sh  # Shell into container
+docker-compose restart                 # Restart dev server
+docker-compose down                    # Stop and remove containers
 ```
+
+**Production mode** (optimized, security-hardened):
+```bash
+docker-compose -f docker-compose.prod.yml up --build -d     # Start prod server (detached)
+docker-compose -f docker-compose.prod.yml logs -f           # View logs
+docker-compose -f docker-compose.prod.yml ps                # Check status
+docker-compose -f docker-compose.prod.yml down              # Stop and remove
+docker-compose -f docker-compose.prod.yml down -v           # Stop and remove volumes
+```
+
+**IMPORTANT:**
+- The user has Docker Desktop for Windows (v28.1.1+) installed
+- **Docker Desktop MUST be running before any docker commands** - if not running, user will see error: `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
+- If you need the user to run Docker commands, ALWAYS remind them to start Docker Desktop first and verify with `docker ps`
+- Development uses `Dockerfile.dev`, production uses `Dockerfile.prod`
+- Database persists in Docker volume for production (`radio_radio-data`)
+- See `DOCKER.md` for comprehensive deployment documentation
+- See `RUNDOCKER.md` for quick reference guide with copy-paste commands (gitignored personal file)
 
 ### Testing commands
 ```bash
@@ -54,6 +81,7 @@ The application is entirely contained in a single `server.js` file (~540 lines) 
 
 1. **Database Initialization** (lines 10-141)
    - Creates SQLite tables on startup
+   - Database path configurable via `DB_PATH` environment variable (default: `radio.db`)
    - Runs automatic schema migrations to add new columns/indexes
    - Migration logic handles backwards compatibility and data preservation
    - Tables: `listeners`, `listening_sessions`, `song_requests`, `feedback`, `song_ratings`
@@ -177,6 +205,49 @@ The application follows the Radio Calico Style Guide. When making UI changes:
 - Browser fingerprinting happens in `generateFingerprint()` - creates unique ID from canvas, screen, navigator properties
 - **Write tests:** Create unit tests in `tests/frontend/unit/` for new UI functions (see `rating-display.test.js` for patterns)
 
+### Docker deployment patterns
+
+**When to use Docker:**
+- Testing production builds locally before deployment
+- Deploying to cloud platforms (AWS, Google Cloud, Azure)
+- Ensuring consistent environments across development and production
+- Isolating the application from host system dependencies
+
+**Development with Docker:**
+1. Start container: `docker-compose up --build`
+2. Make code changes in your editor
+3. Changes automatically sync to container (volume mounting)
+4. Nodemon restarts server on `server.js` changes
+5. Frontend changes are instant (static file serving)
+6. Run tests: `docker-compose exec radio-calico-dev npm test`
+7. Stop: `docker-compose down`
+
+**Production deployment:**
+1. Build optimized image: `docker-compose -f docker-compose.prod.yml build`
+2. Test locally: `docker-compose -f docker-compose.prod.yml up`
+3. Verify health: `docker ps` (should show "healthy" status)
+4. Deploy to server/cloud
+5. Set up database backups (see Docker Environment section)
+6. Configure reverse proxy (nginx/Caddy) for HTTPS
+7. Monitor logs: `docker-compose -f docker-compose.prod.yml logs -f`
+
+**Database configuration in Docker:**
+- Use `DB_PATH` environment variable to specify database location
+- Development: Database in project directory (`./radio.db`)
+- Production: Database in Docker volume (`/app/data/radio.db`)
+- Always backup production database before updates
+
+**Environment variable configuration:**
+- Set in `docker-compose.yml` for development
+- Set in `docker-compose.prod.yml` for production
+- Can override with command line: `docker run -e PORT=8080 ...`
+
+**Image optimization tips:**
+- Use `.dockerignore` to exclude unnecessary files (tests, docs)
+- Production image uses multi-stage builds (smaller size)
+- Only production dependencies in final image
+- Non-root user for security
+
 ## Testing Framework
 
 The application has a comprehensive Jest-based testing framework covering both backend and frontend ratings functionality.
@@ -251,17 +322,33 @@ When adding new features:
 
 ## Known Issues and Quirks
 
+- **Docker Desktop must be running:** Before any `docker` or `docker-compose` commands, Docker Desktop must be started and running. Common error if not running: `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`. Solution: Start Docker Desktop from Start Menu, wait for whale icon in system tray to be steady, verify with `docker ps`.
 - **Database locking:** Only one connection at a time. If using DB viewer tools, close them before running server.
 - **Session management:** Uses fingerprint-based session IDs stored in localStorage, not server-side sessions.
 - **Client-side fingerprinting:** `app.js` includes canvas fingerprinting code that generates browser-unique IDs, sent with API requests along with server-side fingerprint for redundancy.
 - **Metadata polling:** Happens every 5 seconds, not every second, to reduce server load.
+- **Docker on Windows:** Use PowerShell or WSL for best Docker experience. Git Bash may have issues with path mounting.
+- **Docker database access:** Production database is in a Docker volume, not directly accessible. Use backup/restore commands from Docker Environment section.
+- **Hot-reloading in Docker:** Frontend changes (HTML/CSS/JS in `public/`) are instant, but `server.js` changes require nodemon restart (~2-3 seconds).
 
 ## Manual Testing & Verification
 
 ### Automated Tests
+
+**Local (without Docker):**
 ```bash
 npm test                 # Run all 40 unit and integration tests
 npm run test:coverage    # Generate coverage report (see coverage/lcov-report/index.html)
+```
+
+**In Docker container:**
+```bash
+# Development container
+docker-compose exec radio-calico-dev npm test
+docker-compose exec radio-calico-dev npm run test:coverage
+
+# Production container (not recommended - tests excluded)
+# Use development container for testing
 ```
 
 ### Manual API Testing
@@ -271,8 +358,15 @@ npm run test:coverage    # Generate coverage report (see coverage/lcov-report/in
 - **Test rating endpoint:** POST to `/api/ratings` with JSON body
 
 ### Database Inspection
+
+**Local database:**
 - **View database:** Use DB Browser for SQLite or `sqlite3 radio.db` CLI
 - **Test database:** In-memory databases are created automatically for tests (no cleanup needed)
+
+**Docker database:**
+- **Development:** Database is at `./radio.db` in project directory (accessible from host)
+- **Production:** Database is in Docker volume (use backup commands from Docker Environment section)
+- **Query from container:** `docker-compose exec radio-calico-dev sqlite3 /app/radio.db`
 
 ## File Reference
 
@@ -290,17 +384,249 @@ npm run test:coverage    # Generate coverage report (see coverage/lcov-report/in
 - `tests/frontend/` - Frontend unit tests
 - `coverage/` - Test coverage reports (generated by `npm run test:coverage`, gitignored)
 
+### Docker & Deployment Files
+- `Dockerfile` - Legacy Docker file (now redirects to dev configuration for backwards compatibility)
+- `Dockerfile.dev` - Development-optimized Docker image (hot-reloading, all dependencies, ~350MB)
+- `Dockerfile.prod` - Production-optimized Docker image (multi-stage build, non-root user, ~150MB)
+- `docker-compose.yml` - Development environment orchestration (source mounting, local database)
+- `docker-compose.prod.yml` - Production environment orchestration (volume persistence, health checks)
+- `.dockerignore` - Docker build exclusions (tests, docs, dev files excluded from images)
+- `DOCKER.md` - Comprehensive Docker deployment guide (350+ lines covering all deployment scenarios)
+- `RUNDOCKER.md` - Quick reference guide with copy-paste Docker commands (gitignored personal file)
+
 ### Configuration & Documentation
 - `package.json` - Dependencies and npm scripts (including test commands)
 - `CLAUDE.md` - This file (project memory for Claude Code)
 - `README.md` - User-facing documentation
-- `.gitignore` - Git ignore rules (node_modules, *.db, .env, coverage, etc.)
-- `.dockerignore` - Docker ignore rules (excludes tests from Docker images)
+- `.gitignore` - Git ignore rules (organized by category: dependencies, runtime data, secrets, logs, personal files, Docker runtime)
 
 ### Design Reference
 - `RadioCalico_Style_Guide.txt` - Official brand guidelines
 - `RadioCalicoLayout.png` - Reference design mockup
 - `stream_URL.txt` - HLS stream URL reference
+
+## Version Control & Git
+
+### What's Tracked in Git (Committed)
+
+**Source Code:**
+- `server.js` - Main application
+- `public/` - All frontend files (HTML, JS, CSS, images)
+- `tests/` - All test files and helpers
+
+**Docker Configuration (Infrastructure as Code):**
+- `Dockerfile`, `Dockerfile.dev`, `Dockerfile.prod` - Container definitions
+- `docker-compose.yml`, `docker-compose.prod.yml` - Orchestration configs
+- `.dockerignore` - Build exclusions
+- **Why these are tracked:** Team collaboration, CI/CD pipelines, consistent environments, documentation
+
+**Documentation:**
+- `README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`
+- Design files: `RadioCalico_Style_Guide.txt`, `RadioCalicoLayout.png`
+
+**Configuration:**
+- `package.json`, `jest.config.js`
+
+### What's Ignored by Git (.gitignore)
+
+**Runtime Data:**
+- `*.db`, `*.db-shm`, `*.db-wal` - SQLite database files (generated at runtime)
+- `logs/`, `*.log` - Application and npm logs
+
+**Dependencies:**
+- `node_modules/` - Installed via `npm install`
+
+**Environment & Secrets:**
+- `.env`, `.env.local`, `.env.*.local` - May contain API keys, passwords, tokens
+
+**Test & Build Artifacts:**
+- `coverage/` - Test coverage reports (regenerated with `npm run test:coverage`)
+
+**Personal Files:**
+- `RUNDOCKER.md` - User's personal Docker reference (not needed in repo)
+
+**Docker Runtime Files:**
+- `docker-compose.override.yml` - Local development overrides
+- `.docker/` - Docker runtime data directory
+
+**OS-Specific:**
+- `.DS_Store` (macOS), `Thumbs.db` (Windows)
+
+### Important Git Practices
+
+**NEVER commit:**
+- Database files (contain user data)
+- `.env` files (contain secrets)
+- `node_modules/` (huge, regeneratable)
+- Personal notes or machine-specific configs
+
+**ALWAYS commit:**
+- Docker configuration files (Dockerfile*, docker-compose*.yml)
+- Documentation updates
+- Source code changes
+- Configuration changes (package.json, jest.config.js)
+
+**When adding new environment variables:**
+1. Add to `.env.example` (template without real values) - COMMIT THIS
+2. Add to `.env` (actual values) - DO NOT COMMIT
+3. Document in README.md and DOCKER.md
+
+## Docker Environment
+
+### Environment Variables
+
+The application supports the following environment variables:
+
+- **`PORT`** (default: `3000`) - Server port number
+- **`NODE_ENV`** (default: `development`) - Environment mode (`development` or `production`)
+- **`DB_PATH`** (default: `radio.db`) - SQLite database file path
+
+**Example usage:**
+```bash
+# Local development
+PORT=8080 NODE_ENV=development npm start
+
+# Docker development (set in docker-compose.yml)
+environment:
+  - PORT=3000
+  - NODE_ENV=development
+
+# Docker production (set in docker-compose.prod.yml)
+environment:
+  - PORT=3000
+  - NODE_ENV=production
+  - DB_PATH=/app/data/radio.db
+```
+
+### Docker Architecture
+
+**Development Container (`Dockerfile.dev`):**
+- Based on `node:22-alpine`
+- Includes build tools (python3, make, g++) for better-sqlite3 compilation
+- Installs all dependencies (including devDependencies)
+- Source code mounted as volume for hot-reloading with nodemon
+- Database file stored in project directory (`./radio.db`)
+- Health check pings `/api/health` every 30 seconds
+- Size: ~350MB
+
+**Production Container (`Dockerfile.prod`):**
+- Multi-stage build for optimization
+- Stage 1 (builder): Compiles dependencies
+- Stage 2 (production): Minimal runtime image
+- Runs as non-root user (`nodejs:nodejs` uid:1001)
+- Only production dependencies installed
+- Database stored in Docker named volume (`radio_radio-data`)
+- Health check with 30s interval, 40s start period
+- Auto-restart on failure
+- Size: ~150MB
+
+### Database Management in Docker
+
+**Development:**
+- Database file: `./radio.db` (in project directory)
+- Persists across container restarts
+- Can be edited with SQLite tools on host machine
+- Deleted when volume is removed with `docker-compose down -v`
+
+**Production:**
+- Database stored in Docker named volume: `radio_radio-data`
+- Persists even when containers are removed
+- Not directly accessible from host (requires Docker volume commands)
+
+**Backup production database:**
+```bash
+docker run --rm \
+  -v radio_radio-data:/data \
+  -v ${PWD}:/backup \
+  alpine tar czf /backup/db-backup.tar.gz -C /data .
+```
+
+**Restore production database:**
+```bash
+docker run --rm \
+  -v radio_radio-data:/data \
+  -v ${PWD}:/backup \
+  alpine tar xzf /backup/db-backup.tar.gz -C /data
+```
+
+### Docker Development Workflow
+
+1. **Start development environment:**
+   ```bash
+   docker-compose up --build
+   ```
+
+2. **Edit code locally** - changes automatically reflected due to volume mounting
+
+3. **Nodemon restarts server** - happens automatically when `server.js` changes
+
+4. **View logs:**
+   ```bash
+   docker-compose logs -f
+   ```
+
+5. **Run tests in container:**
+   ```bash
+   docker-compose exec radio-calico-dev npm test
+   ```
+
+6. **Shell into container for debugging:**
+   ```bash
+   docker-compose exec radio-calico-dev sh
+   ```
+
+### Docker Production Deployment
+
+1. **Build and start production container:**
+   ```bash
+   docker-compose -f docker-compose.prod.yml up --build -d
+   ```
+
+2. **Verify health status:**
+   ```bash
+   docker ps  # Check "STATUS" column shows "healthy"
+   ```
+
+3. **Monitor logs:**
+   ```bash
+   docker-compose -f docker-compose.prod.yml logs -f
+   ```
+
+4. **Backup database regularly:**
+   ```bash
+   # Use backup commands from Database Management section
+   ```
+
+5. **Update to new version:**
+   ```bash
+   docker-compose -f docker-compose.prod.yml pull
+   docker-compose -f docker-compose.prod.yml up -d --build
+   ```
+
+### Common Docker Patterns
+
+**Rebuild without cache:**
+```bash
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+**View container stats:**
+```bash
+docker stats radio-calico-prod
+```
+
+**Clean up everything:**
+```bash
+docker-compose down -v        # Remove containers and volumes
+docker system prune -a        # Clean up all unused Docker resources
+```
+
+**Run tests in production image:**
+```bash
+# Not recommended - tests are excluded from prod image via .dockerignore
+# Use development image for testing instead
+```
 
 ## Development Best Practices
 
@@ -315,3 +641,27 @@ npm run test:coverage    # Generate coverage report (see coverage/lcov-report/in
 - All test helpers are well-documented with JSDoc comments
 - Test files mirror the structure of source files for easy navigation
 - In-memory databases ensure tests are fast and don't pollute the production database
+
+### Docker Best Practices
+- **Development:** Use `docker-compose up` for local development with hot-reloading
+- **Production:** Always use `docker-compose.prod.yml` for production deployments
+- **Database backups:** Backup production database before deploying updates
+- **Health checks:** Verify container health with `docker ps` after deployment
+- **Logs:** Monitor logs regularly with `docker-compose logs -f`
+- **Security:** Production image runs as non-root user, never override this
+- **Volumes:** Use named volumes for production databases, never mount host directories
+- **Testing:** Run tests in development container, not production
+- **Rebuilding:** Use `--no-cache` if dependencies or base image changed
+- **Cleanup:** Regularly prune unused Docker resources with `docker system prune`
+- **Environment:** Always set `NODE_ENV=production` for production deployments
+- **Documentation:** Refer to `DOCKER.md` for comprehensive deployment instructions, or `RUNDOCKER.md` for quick reference commands
+
+### Version Control Best Practices
+- **Commit Docker configs:** Always commit Dockerfile*, docker-compose*.yml, and .dockerignore files
+- **Never commit secrets:** Keep .env files out of Git, use .env.example for templates
+- **Never commit runtime data:** Database files (*.db), logs, node_modules, coverage reports stay local
+- **Organize .gitignore:** Group related entries with comments for clarity
+- **Personal files:** Keep personal reference files (like RUNDOCKER.md) gitignored
+- **Docker overrides:** If using docker-compose.override.yml for local dev, keep it gitignored
+- **Check before commit:** Run `git status` to ensure no sensitive files are staged
+- **Infrastructure as Code:** Docker configs are infrastructure - version control them like source code

@@ -6,9 +6,10 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DB_PATH = process.env.DB_PATH || 'radio.db';
 
 // Initialize SQLite database
-const db = new Database('radio.db');
+const db = new Database(DB_PATH);
 
 // Create tables for radio application
 db.exec(`
@@ -515,7 +516,7 @@ app.get('/api/health', (req, res) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎵 Radio Server running on http://localhost:${PORT}`);
-  console.log(`📊 Database: radio.db`);
+  console.log(`📊 Database: ${DB_PATH}`);
   console.log(`\n📡 API Endpoints:`);
   console.log(`   POST   /api/listeners          - Register/update listener`);
   console.log(`   GET    /api/listeners/stats    - Get listener statistics`);

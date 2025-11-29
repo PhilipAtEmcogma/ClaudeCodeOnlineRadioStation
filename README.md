@@ -137,18 +137,39 @@ The application uses a modern **horizontal two-column layout**:
 
 ### Docker Deployment
 
-1. **Start the application:**
-   ```bash
-   docker-compose up --build
-   ```
+The application includes separate Docker configurations for development and production deployments.
 
-2. **Access the application:**
-   - Open your browser to: http://localhost:3000
+**⚠️ IMPORTANT:** Before running any Docker commands, ensure **Docker Desktop is running**. Open Docker Desktop from your Start Menu and wait for the whale icon to appear steady in your system tray. Verify with `docker ps` command.
 
-3. **Stop the server:**
-   ```bash
-   docker-compose down
-   ```
+#### Development Mode (with hot-reloading)
+```bash
+# Start development server
+docker-compose up --build
+
+# Or run in background
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+```
+
+#### Production Mode (optimized build)
+```bash
+# Start production server
+docker-compose -f docker-compose.prod.yml up --build -d
+
+# View logs
+docker-compose -f docker-compose.prod.yml logs -f
+
+# Stop the server
+docker-compose -f docker-compose.prod.yml down
+```
+
+**Access the application:** http://localhost:3000
+
+**Docker Documentation:**
+- **[DOCKER.md](DOCKER.md)** - Comprehensive deployment guide (350+ lines) covering all deployment scenarios, database management, troubleshooting, and best practices
+- **RUNDOCKER.md** - Quick reference guide with copy-paste commands (personal file, gitignored)
 
 ## Project Structure
 
@@ -184,12 +205,43 @@ Radio/
 ├── RadioCalico_Style_Guide.txt    # Official brand style guide
 ├── RadioCalicoLayout.png          # Reference layout mockup
 ├── RadioCalicoLogoTM.png          # Logo source file
-├── Dockerfile                     # Docker container configuration
-├── docker-compose.yml             # Docker orchestration
+├── Dockerfile                     # Legacy Docker config (redirects to dev)
+├── Dockerfile.dev                 # Development Docker configuration
+├── Dockerfile.prod                # Production Docker configuration
+├── docker-compose.yml             # Development orchestration
+├── docker-compose.prod.yml        # Production orchestration
+├── .dockerignore                  # Docker build exclusions
 ├── stream_URL.txt                # HLS stream URL
+├── DOCKER.md                      # Docker deployment guide (comprehensive)
+├── RUNDOCKER.md                   # Docker quick reference (gitignored, personal)
 ├── CLAUDE.md                      # Development instructions
+├── .gitignore                     # Git ignore rules
 └── README.md                      # This file
 ```
+
+### Version Control
+
+**Files tracked in Git (committed to repository):**
+- ✅ All Docker configuration files (`Dockerfile*`, `docker-compose*.yml`, `.dockerignore`)
+- ✅ Source code (`server.js`, `public/*`, `tests/*`)
+- ✅ Documentation (`README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`)
+- ✅ Configuration (`package.json`, `jest.config.js`)
+- ✅ Design assets (`RadioCalico_Style_Guide.txt`, `RadioCalicoLayout.png`)
+
+**Files ignored by Git (in `.gitignore`):**
+- 🚫 Runtime data (`*.db`, `*.db-shm`, `*.db-wal`, `logs/`)
+- 🚫 Dependencies (`node_modules/`)
+- 🚫 Secrets (`.env*`)
+- 🚫 Test coverage reports (`coverage/`)
+- 🚫 Personal reference files (`RUNDOCKER.md`)
+- 🚫 Docker runtime files (`docker-compose.override.yml`, `.docker/`)
+- 🚫 OS-specific files (`.DS_Store`, `Thumbs.db`)
+
+**Why Docker config files ARE in Git:**
+- Enables team collaboration with consistent environments
+- Required for CI/CD pipelines
+- Documents how the project should be containerized
+- Allows version control of infrastructure changes
 
 ## API Documentation
 
@@ -505,9 +557,12 @@ Check console output for debugging.
 ### Environment Variables
 
 ```bash
-PORT=3000                    # Server port
-NODE_ENV=production          # Environment mode
+PORT=3000                    # Server port (default: 3000)
+NODE_ENV=production          # Environment mode (development or production)
+DB_PATH=/path/to/radio.db    # Database file path (default: radio.db)
 ```
+
+The `DB_PATH` variable is especially useful for Docker deployments where the database should be stored in a persistent volume.
 
 ### Performance Optimization
 
@@ -517,6 +572,15 @@ NODE_ENV=production          # Environment mode
 - Vote fingerprints are cached per request
 
 ## Troubleshooting
+
+### Docker Desktop Not Running
+**Error:** `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
+
+**Solution:**
+1. Start Docker Desktop from Start Menu
+2. Wait for whale icon in system tray to be steady (not spinning)
+3. Verify: `docker ps` should work without errors
+4. Then run your docker-compose command
 
 ### Port Already in Use
 ```bash
