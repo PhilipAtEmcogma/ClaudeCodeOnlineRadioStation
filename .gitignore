@@ -36,6 +36,9 @@ logs
 # Test coverage
 coverage
 
+# Build output
+dist
+
 # Security reports and backups
 reports
 backups

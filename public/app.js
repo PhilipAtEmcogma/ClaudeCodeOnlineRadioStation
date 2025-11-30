@@ -1,3 +1,5 @@
+import Hls from 'hls.js';
+
 const audioPlayer = document.getElementById('audioPlayer');
 const playButton = document.getElementById('playButton');
 const volumeSlider = document.getElementById('volumeSlider');
@@ -28,9 +30,9 @@ let timerInterval = null;
 let previousVolume = 100;
 let metadataInterval = null;
 let currentSongId = null;
-let userSessionId = null;
+let userSessionId = null; // Lazy-loaded on first use
 
-// Generate browser fingerprint for persistent user identification
+// Generate browser fingerprint for persistent user identification (lazy-loaded)
 function generateFingerprint() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -73,13 +75,19 @@ function generateFingerprint() {
     return 'fp_' + Math.abs(hash).toString(36);
 }
 
-// Get or create persistent session ID
+// Get or create persistent session ID (lazy-loaded)
 function getSessionId() {
+    // Return cached value if already generated
+    if (userSessionId) {
+        return userSessionId;
+    }
+
     // Try to get from localStorage first
     let sessionId = localStorage.getItem('radio_session_id');
 
     if (!sessionId) {
-        // Generate fingerprint-based ID
+        // Generate fingerprint-based ID (expensive operation)
+        console.log('🔐 Generating browser fingerprint for user identification...');
         sessionId = generateFingerprint();
         try {
             localStorage.setItem('radio_session_id', sessionId);
@@ -89,10 +97,10 @@ function getSessionId() {
         }
     }
 
+    // Cache for future use
+    userSessionId = sessionId;
     return sessionId;
 }
-
-userSessionId = getSessionId();
 
 // Set initial volume
 audioPlayer.volume = volumeSlider.value / 100;
@@ -257,7 +265,7 @@ async function fetchRatings() {
     if (!currentSongId) return;
 
     try {
-        const response = await fetch(`/api/ratings/${currentSongId}?session_id=${userSessionId}`);
+        const response = await fetch(`/api/ratings/${currentSongId}?session_id=${getSessionId()}`);
         if (!response.ok) throw new Error('Failed to fetch ratings');
 
         const data = await response.json();
@@ -298,7 +306,7 @@ async function submitRating(rating) {
             },
             body: JSON.stringify({
                 song_id: currentSongId,
-                session_id: userSessionId,
+                session_id: getSessionId(),
                 rating: rating
             })
         });
@@ -352,6 +360,23 @@ function stopMetadataFetch() {
         metadataInterval = null;
     }
 }
+
+// Page Visibility API - pause metadata polling when tab is hidden
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        // Tab is hidden - pause metadata fetching to save bandwidth
+        if (isPlaying && metadataInterval) {
+            console.log('📭 Tab hidden - pausing metadata polling');
+            stopMetadataFetch();
+        }
+    } else {
+        // Tab is visible again - resume metadata fetching if playing
+        if (isPlaying && !metadataInterval) {
+            console.log('📬 Tab visible - resuming metadata polling');
+            startMetadataFetch();
+        }
+    }
+});
 
 // Format time as m:ss / Live
 function formatTime(seconds) {
@@ -509,6 +534,31 @@ window.addEventListener('beforeunload', function() {
         hls.destroy();
     }
 });
+
+// Register Service Worker for offline capability and caching
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then((registration) => {
+                console.log('✅ Service Worker registered:', registration.scope);
+
+                // Check for updates periodically
+                setInterval(() => {
+                    registration.update();
+                }, 60 * 60 * 1000); // Check every hour
+            })
+            .catch((error) => {
+                console.log('❌ Service Worker registration failed:', error);
+            });
+
+        // Listen for service worker messages
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'CACHE_CLEARED') {
+                console.log('Cache cleared by service worker');
+            }
+        });
+    });
+}
 
 // Fetch metadata once on page load to show current track
 fetchMetadata();
