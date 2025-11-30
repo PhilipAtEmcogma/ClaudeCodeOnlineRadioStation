@@ -5,7 +5,13 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
+    "dev:vite": "vite",
     "start": "node server.js",
+    "build": "vite build",
+    "build:optimize": "npm run optimize:images && vite build",
+    "optimize:images": "node optimize-images.js",
+    "extract:critical": "node extract-critical-css.js",
+    "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -26,6 +32,7 @@
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
+    "hls.js": "^1.6.15",
     "pg": "^8.11.3"
   },
   "devDependencies": {
@@ -37,6 +44,9 @@
     "jest-environment-jsdom": "^30.2.0",
     "msw": "^2.12.3",
     "nodemon": "^3.0.2",
-    "supertest": "^7.1.4"
+    "sharp": "^0.34.5",
+    "supertest": "^7.1.4",
+    "terser": "^5.44.1",
+    "vite": "^7.2.4"
   }
 }

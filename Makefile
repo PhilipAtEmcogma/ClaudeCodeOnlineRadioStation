@@ -12,6 +12,8 @@ help:
 	@echo "  make install          - Install npm dependencies"
 	@echo "  make dev              - Start development server with auto-reload"
 	@echo "  make start            - Start production server"
+	@echo "  make build            - Build optimized production assets"
+	@echo "  make build-optimize   - Optimize images and build production assets"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test             - Run all tests (backend + frontend)"
@@ -71,6 +73,12 @@ dev:
 
 start:
 	npm start
+
+build:
+	npm run build
+
+build-optimize:
+	npm run build:optimize
 
 # ========================================
 # Testing Targets
@@ -317,6 +325,9 @@ docker-dev-down:
 # ========================================
 
 docker-prod:
+	@echo "Building optimized frontend assets..."
+	npm run build
+	@echo ""
 	@echo "Starting production Docker containers..."
 	@echo "WARNING: Ensure .env file exists with POSTGRES_PASSWORD set!"
 	docker-compose -f docker-compose.prod.yml up -d --build
@@ -356,6 +367,7 @@ clean:
 	@echo "Cleaning up generated files..."
 	rm -rf coverage/
 	rm -rf reports/
+	rm -rf dist/
 	rm -rf node_modules/.cache/
 	@echo "Cleanup complete!"
 

@@ -19,10 +19,11 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      mediaSrc: ["'self'", "https://d3d4yli4hf5bmh.cloudfront.net"],
+      mediaSrc: ["'self'", "https://d3d4yli4hf5bmh.cloudfront.net", "blob:"],
       connectSrc: ["'self'", "https://d3d4yli4hf5bmh.cloudfront.net"],
+      workerSrc: ["'self'", "blob:"],
     },
   },
   // Allow frames from same origin for embedding
@@ -78,8 +79,12 @@ app.use('/api/', generalLimiter);
 app.use(express.json({ limit: '10kb' })); // Limit request body size
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Serve static files
-app.use(express.static('public'));
+// Serve static files - use dist in production, public in development
+const staticDir = process.env.NODE_ENV === 'production' && require('fs').existsSync(path.join(__dirname, 'dist'))
+  ? 'dist'
+  : 'public';
+console.log(`Serving static files from: ${staticDir}`);
+app.use(express.static(staticDir));
 
 // Helper function to get client IP address
 function getClientIP(req) {
