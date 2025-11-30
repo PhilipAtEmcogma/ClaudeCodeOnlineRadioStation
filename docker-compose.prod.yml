@@ -1,32 +1,78 @@
 services:
-  radio-calico:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: radio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-radio}
+      POSTGRES_USER: ${POSTGRES_USER:-radio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in .env file}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - radio-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radio}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Radio Calico API Backend
+  radio-calico-api:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    container_name: radio-calico-prod
+    container_name: radio-calico-api
     restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      # Persist SQLite database
-      - radio-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=3000
-      # SQLite database path (set in server.js or via env var if configurable)
-      - DB_PATH=/app/data/radio.db
+      - DATABASE_TYPE=postgres
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-radio}
+      - POSTGRES_USER=${POSTGRES_USER:-radio}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in .env file}
+    networks:
+      - radio-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+
+  # Nginx Web Server (serves static files + reverse proxy)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: radio-nginx
+    restart: unless-stopped
+    depends_on:
+      - radio-calico-api
+    ports:
+      - "${PORT:-80}:80"
+    volumes:
+      # Nginx configuration
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Static files from public directory
+      - ./public:/usr/share/nginx/html:ro
     networks:
       - radio-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
-  # Named volume for persistent database storage
-  radio-data:
+  # PostgreSQL data volume
+  postgres-data:
     driver: local
 
 networks:

@@ -6,8 +6,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for better-sqlite3 compilation
-RUN apk add --no-cache python3 make g++
+# Install build dependencies for better-sqlite3 and pg compilation
+RUN apk add --no-cache python3 make g++ postgresql-dev
 
 # Copy package files
 COPY package*.json ./
@@ -17,13 +17,17 @@ RUN npm ci
 
 # Copy application source
 COPY server.js ./
-COPY public ./public
+COPY db.js ./
 
 # Stage 2: Production
 FROM node:22-alpine
 
 # Set production environment
 ENV NODE_ENV=production
+ENV DATABASE_TYPE=postgres
+
+# Install PostgreSQL client library
+RUN apk add --no-cache postgresql-libs
 
 # Create app directory
 WORKDIR /app
@@ -39,13 +43,9 @@ COPY package*.json ./
 RUN npm ci --only=production && \
     npm cache clean --force
 
-# Copy application files from builder
+# Copy application files from builder (API only, nginx serves static files)
 COPY --from=builder --chown=nodejs:nodejs /app/server.js ./
-COPY --from=builder --chown=nodejs:nodejs /app/public ./public
-
-# Create directory for SQLite database with proper permissions
-RUN mkdir -p /app/data && \
-    chown -R nodejs:nodejs /app/data
+COPY --from=builder --chown=nodejs:nodejs /app/db.js ./
 
 # Switch to non-root user
 USER nodejs
