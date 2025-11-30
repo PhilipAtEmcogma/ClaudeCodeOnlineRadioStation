@@ -4,16 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Radio Calico is a full-featured live radio streaming web application with HLS audio streaming, real-time metadata updates, listener analytics, song ratings, and request management. The application uses a **monolithic architecture** with a single Node.js/Express backend serving both the API and static frontend files.
+Radio Calico is a full-featured live radio streaming web application with HLS audio streaming, real-time metadata updates, listener analytics, song ratings, and request management.
+
+The application uses **different architectures for development and production**:
+- **Development:** Monolithic architecture with SQLite database and Express serving both API and static files
+- **Production:** Three-service architecture with PostgreSQL database, Node.js API backend, and Nginx web server
 
 ## Technology Stack
 
+### Development
 - **Backend:** Node.js v22+ with Express.js
 - **Database:** SQLite with better-sqlite3 (synchronous API)
+- **Deployment:** Single Docker container
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3 with HLS.js for audio streaming
 - **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
-- **Development:** Nodemon for auto-reload
-- **Containerization:** Docker with separate dev/prod configurations
+- **Auto-reload:** Nodemon
+
+### Production
+- **Backend:** Node.js v22+ with Express.js (API only)
+- **Database:** PostgreSQL 16 (asynchronous API via pg library)
+- **Web Server:** Nginx (static files + reverse proxy)
+- **Deployment:** Three Docker containers (postgres, radio-calico-api, nginx)
+- **Database Abstraction:** Custom db.js layer supports both SQLite and PostgreSQL
+- **Containerization:** Docker Compose with health checks and restart policies
 
 ## Development Commands
 
@@ -44,21 +57,25 @@ docker-compose restart                 # Restart dev server
 docker-compose down                    # Stop and remove containers
 ```
 
-**Production mode** (optimized, security-hardened):
+**Production mode** (three-service architecture: PostgreSQL + API + Nginx):
 ```bash
-docker-compose -f docker-compose.prod.yml up --build -d     # Start prod server (detached)
-docker-compose -f docker-compose.prod.yml logs -f           # View logs
-docker-compose -f docker-compose.prod.yml ps                # Check status
-docker-compose -f docker-compose.prod.yml down              # Stop and remove
-docker-compose -f docker-compose.prod.yml down -v           # Stop and remove volumes
+docker-compose -f docker-compose.prod.yml up --build -d     # Start all services (detached)
+docker-compose -f docker-compose.prod.yml logs -f           # View logs for all services
+docker-compose -f docker-compose.prod.yml logs -f nginx     # View nginx logs
+docker-compose -f docker-compose.prod.yml logs -f radio-calico-api  # View API logs
+docker-compose -f docker-compose.prod.yml logs -f postgres  # View PostgreSQL logs
+docker-compose -f docker-compose.prod.yml ps                # Check status of all services
+docker-compose -f docker-compose.prod.yml down              # Stop and remove containers
+docker-compose -f docker-compose.prod.yml down -v           # Stop and remove volumes (DANGER: deletes database)
 ```
 
 **IMPORTANT:**
 - The user has Docker Desktop for Windows (v28.1.1+) installed
 - **Docker Desktop MUST be running before any docker commands** - if not running, user will see error: `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`
 - If you need the user to run Docker commands, ALWAYS remind them to start Docker Desktop first and verify with `docker ps`
-- Development uses `Dockerfile.dev`, production uses `Dockerfile.prod`
-- Database persists in Docker volume for production (`radio_radio-data`)
+- **Development:** Uses `Dockerfile.dev`, single container, SQLite database in `./radio.db`
+- **Production:** Uses `Dockerfile.prod`, three containers (postgres, radio-calico-api, nginx), PostgreSQL data in Docker volume (`postgres-data`)
+- Production requires `.env` file with `POSTGRES_PASSWORD` set
 - See `DOCKER.md` for comprehensive deployment documentation
 - See `RUNDOCKER.md` for quick reference guide with copy-paste commands (gitignored personal file)
 
@@ -75,34 +92,78 @@ npm run test:coverage        # Run tests with coverage report
 
 ## High-Level Architecture
 
+### Database Abstraction Layer (db.js)
+
+The application uses a **database abstraction layer** in `db.js` (~365 lines) that supports both SQLite and PostgreSQL:
+
+**Key Features:**
+- Auto-detects database type via `DATABASE_TYPE` environment variable
+- Provides unified async API: `get()`, `all()`, `run()`, `query()`
+- Automatically converts `?` placeholders to PostgreSQL `$1, $2, ...` syntax
+- Creates database schemas on initialization
+- Runs migrations for both SQLite and PostgreSQL
+- Returns consistent result formats across both databases
+
+**Database Selection:**
+- **SQLite (development):** Synchronous better-sqlite3 wrapped in async functions
+- **PostgreSQL (production):** Async pg library with connection pooling
+
 ### Backend Structure (server.js)
 
-The application is entirely contained in a single `server.js` file (~540 lines) organized into these sections:
+The main application file (`server.js`) is organized into these sections:
 
-1. **Database Initialization** (lines 10-141)
-   - Creates SQLite tables on startup
-   - Database path configurable via `DB_PATH` environment variable (default: `radio.db`)
-   - Runs automatic schema migrations to add new columns/indexes
-   - Migration logic handles backwards compatibility and data preservation
+1. **Database Initialization**
+   - Imports `db.js` and initializes database connection
+   - Calls `initializeDatabase()` which creates tables and runs migrations
+   - All database operations are now **async/await**
    - Tables: `listeners`, `listening_sessions`, `song_requests`, `feedback`, `song_ratings`
 
-2. **User Fingerprinting System** (lines 149-173)
+2. **User Fingerprinting System**
    - Server-side fingerprinting: Combines IP, User-Agent, Accept-Language, Accept-Encoding into SHA-256 hash
    - Used to prevent duplicate votes without requiring user login
    - Critical for the rating system's one-vote-per-user guarantee
 
 3. **API Endpoints** - RESTful API organized by feature:
-   - **Listeners API** (lines 175-217): Register/update listeners, get stats
-   - **Listening Sessions API** (lines 219-282): Track session start/end, calculate duration
-   - **Song Requests API** (lines 284-342): Submit/retrieve/update song requests
-   - **Feedback API** (lines 344-398): Submit feedback with star ratings
-   - **Song Ratings API** (lines 400-503): Thumbs up/down voting with deduplication logic
-   - **Health Check** (line 507): Simple health endpoint
+   - **Listeners API:** Register/update listeners, get stats
+   - **Listening Sessions API:** Track session start/end, calculate duration
+   - **Song Requests API:** Submit/retrieve/update song requests
+   - **Feedback API:** Submit feedback with star ratings
+   - **Song Ratings API:** Thumbs up/down voting with deduplication logic
+   - **Health Check:** Simple health endpoint
+   - **All routes are now async** due to database abstraction layer
 
-4. **Server Lifecycle** (lines 515-540)
+4. **Server Lifecycle**
    - Starts server on port 3000 (configurable via PORT env var)
    - Binds to 0.0.0.0 for Docker compatibility
-   - Graceful shutdown handler to close database connection
+   - Graceful shutdown handler to close database connection (supports both SQLite and PostgreSQL)
+
+### Nginx Configuration (Production Only)
+
+In production, Nginx serves as the web server and reverse proxy. Configuration is in `nginx.conf`:
+
+**Nginx responsibilities:**
+1. **Serves static files** from `/usr/share/nginx/html` (mounted from `./public/`)
+   - HTML, CSS, JavaScript, images, fonts
+   - Caching: 1 year for static assets with immutable cache control
+   - Gzip compression enabled for text files
+2. **Reverse proxies API requests** from `/api/*` to `http://radio-calico-api:3000`
+   - Preserves client IP (`X-Real-IP`, `X-Forwarded-For` headers)
+   - No buffering for real-time responses
+3. **Adds security headers**
+   - X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
+4. **Provides health check** at `/health` endpoint (separate from API health check)
+
+**Why nginx in production?**
+- **Performance:** Nginx is optimized for serving static files with caching
+- **Security:** Only nginx is exposed externally, API and database are internal
+- **Flexibility:** Easy to add HTTPS, rate limiting, custom error pages
+- **Scalability:** Can add load balancing if needed
+
+**Customizing nginx:**
+- Edit `nginx.conf` in project root
+- Rebuild: `docker-compose -f docker-compose.prod.yml up -d --build nginx`
+- Test config: `docker-compose -f docker-compose.prod.yml exec nginx nginx -t`
+- Reload: `docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload`
 
 ### Frontend Structure (public/)
 
@@ -132,16 +193,32 @@ The frontend follows a clean separation of concerns with three main files:
 
 #### Database Schema
 
+The database schema is **identical for both SQLite and PostgreSQL**, with minor syntax differences handled by `db.js`:
+
+**Tables:**
+- `listeners` - Unique listeners by session ID
+- `listening_sessions` - Individual listening sessions with duration
+- `song_requests` - User song requests with status
+- `feedback` - User feedback with star ratings
+- `song_ratings` - Thumbs up/down votes with fingerprint deduplication
+
 **song_ratings table** - Most complex table due to fingerprinting:
 - `user_fingerprint`: SHA-256 hash of server-side fingerprint
 - Unique index on `(song_id, user_fingerprint)` prevents duplicate votes
 - Users can change votes (UPDATE), not add multiple votes
 
+**Key differences between SQLite and PostgreSQL:**
+- **Auto-increment:** SQLite uses `AUTOINCREMENT`, PostgreSQL uses `SERIAL`
+- **Timestamps:** SQLite uses `DATETIME`, PostgreSQL uses `TIMESTAMP`
+- **Indexes:** PostgreSQL unique index uses `WHERE user_fingerprint IS NOT NULL` clause
+
 **Migration system:**
-- Runs on every server startup
-- Checks for schema changes using `PRAGMA table_info` and `PRAGMA index_list`
+- Runs on every server startup via `db.js`
+- **SQLite:** Uses `PRAGMA table_info` and `PRAGMA index_list` to check schema
+- **PostgreSQL:** Uses `pg_indexes` system table to check indexes
 - Creates backup tables, migrates data, drops old tables
 - Safe to run repeatedly (idempotent)
+- Migrations are database-specific (handled in `db.js`)
 
 #### Song Rating System Flow
 
@@ -183,17 +260,47 @@ The application follows the Radio Calico Style Guide. When making UI changes:
 ### Adding a new API endpoint
 
 1. Add route handler in appropriate section of `server.js`
-2. Use prepared statements: `db.prepare('SELECT...').get()` or `.all()` or `.run()`
-3. Always wrap in try-catch and return appropriate HTTP status codes
-4. Use consistent response format: `{ message: 'Success' }` or `{ error: 'Error message' }`
-5. **Write tests:** Create integration test in `tests/backend/integration/` following the pattern in `ratings-api.test.js`
+2. **Make route handler async:** All routes must use async/await due to database abstraction
+3. Use database abstraction methods from `db.js`:
+   - `await db.get(sql, params)` - Get single row
+   - `await db.all(sql, params)` - Get all rows
+   - `await db.run(sql, params)` - Execute INSERT/UPDATE/DELETE
+4. Always wrap in try-catch and return appropriate HTTP status codes
+5. Use consistent response format: `{ message: 'Success' }` or `{ error: 'Error message' }`
+6. **Write tests:** Create integration test in `tests/backend/integration/` following the pattern in `ratings-api.test.js`
+
+**Example:**
+```javascript
+app.get('/api/example/:id', async (req, res) => {
+  try {
+    const result = await db.get('SELECT * FROM table WHERE id = ?', [req.params.id]);
+    if (!result) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+```
 
 ### Database queries
 
-- **better-sqlite3 is synchronous** - no async/await needed
-- Use `.get()` for single row, `.all()` for multiple rows, `.run()` for INSERT/UPDATE/DELETE
-- Always use parameterized queries: `db.prepare('SELECT * FROM users WHERE id = ?').get(userId)`
+**IMPORTANT: All database operations are now async** due to the abstraction layer.
+
+- **Use async/await** for all database operations
+- Import database: `const db = require('./db');`
+- Available methods (all async):
+  - `await db.get(sql, params)` - Get single row (returns object or null)
+  - `await db.all(sql, params)` - Get all rows (returns array)
+  - `await db.run(sql, params)` - Execute INSERT/UPDATE/DELETE (returns `{ lastInsertRowid, changes }`)
+  - `await db.query(sql, params)` - Generic query (returns rows or result)
+- Always use parameterized queries: `await db.get('SELECT * FROM users WHERE id = ?', [userId])`
 - Access result properties: `.lastInsertRowid` for INSERT, `.changes` for UPDATE/DELETE
+- Database abstraction handles differences between SQLite and PostgreSQL automatically
+
+**Migration note:** Older code using synchronous `db.prepare()` must be updated to async `db.get()` / `db.all()` / `db.run()`
 
 ### Frontend JavaScript development
 
@@ -223,19 +330,25 @@ The application follows the Radio Calico Style Guide. When making UI changes:
 7. Stop: `docker-compose down`
 
 **Production deployment:**
-1. Build optimized image: `docker-compose -f docker-compose.prod.yml build`
-2. Test locally: `docker-compose -f docker-compose.prod.yml up`
-3. Verify health: `docker ps` (should show "healthy" status)
-4. Deploy to server/cloud
-5. Set up database backups (see Docker Environment section)
-6. Configure reverse proxy (nginx/Caddy) for HTTPS
-7. Monitor logs: `docker-compose -f docker-compose.prod.yml logs -f`
+1. **Configure environment:** Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`
+2. Build optimized images: `docker-compose -f docker-compose.prod.yml build`
+3. Test locally: `docker-compose -f docker-compose.prod.yml up`
+4. Verify health: `docker ps` (should show 3 healthy containers: postgres, radio-calico-api, nginx)
+5. Test endpoints:
+   - `curl http://localhost/` (nginx serves static files)
+   - `curl http://localhost/api/health` (nginx proxies to API)
+6. Deploy to server/cloud
+7. Set up PostgreSQL backups (see Docker Environment section)
+8. Configure HTTPS in nginx.conf for production domain
+9. Monitor logs: `docker-compose -f docker-compose.prod.yml logs -f`
 
 **Database configuration in Docker:**
-- Use `DB_PATH` environment variable to specify database location
-- Development: Database in project directory (`./radio.db`)
-- Production: Database in Docker volume (`/app/data/radio.db`)
-- Always backup production database before updates
+- **Development:** SQLite database in project directory (`./radio.db`)
+  - Set `DATABASE_TYPE=sqlite` and `DB_PATH=radio.db`
+- **Production:** PostgreSQL in Docker volume (`postgres-data`)
+  - Set `DATABASE_TYPE=postgres` and PostgreSQL connection details
+  - Database persists in Docker volume even when containers are removed
+- Always backup production PostgreSQL database before updates (see DOCKER.md for backup commands)
 
 **Environment variable configuration:**
 - Set in `docker-compose.yml` for development
@@ -323,13 +436,19 @@ When adding new features:
 ## Known Issues and Quirks
 
 - **Docker Desktop must be running:** Before any `docker` or `docker-compose` commands, Docker Desktop must be started and running. Common error if not running: `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`. Solution: Start Docker Desktop from Start Menu, wait for whale icon in system tray to be steady, verify with `docker ps`.
-- **Database locking:** Only one connection at a time. If using DB viewer tools, close them before running server.
+- **Production requires .env file:** Production deployment requires creating a `.env` file with `POSTGRES_PASSWORD` set. Copy `.env.example` and edit it before running `docker-compose -f docker-compose.prod.yml up`.
+- **Different databases:** Development uses SQLite (synchronous), production uses PostgreSQL (async). All code uses async/await via `db.js` abstraction layer.
+- **Async/await required:** All database operations must use async/await. Old synchronous `db.prepare()` code won't work with PostgreSQL.
+- **Production architecture:** Production uses 3 containers (postgres, API, nginx). Only nginx port 80 is exposed. API and database are internal only.
+- **Nginx in production only:** Development uses Express to serve static files. Production uses nginx for static files and reverse proxy.
+- **Database locking (SQLite only):** SQLite allows only one connection at a time. If using DB viewer tools in development, close them before running server.
 - **Session management:** Uses fingerprint-based session IDs stored in localStorage, not server-side sessions.
 - **Client-side fingerprinting:** `app.js` includes canvas fingerprinting code that generates browser-unique IDs, sent with API requests along with server-side fingerprint for redundancy.
 - **Metadata polling:** Happens every 5 seconds, not every second, to reduce server load.
 - **Docker on Windows:** Use PowerShell or WSL for best Docker experience. Git Bash may have issues with path mounting.
-- **Docker database access:** Production database is in a Docker volume, not directly accessible. Use backup/restore commands from Docker Environment section.
-- **Hot-reloading in Docker:** Frontend changes (HTML/CSS/JS in `public/`) are instant, but `server.js` changes require nodemon restart (~2-3 seconds).
+- **Docker database access:** Production PostgreSQL database is in a Docker volume, not directly accessible. Use `docker exec` commands (see Docker Environment section).
+- **Hot-reloading in Docker:** Frontend changes (HTML/CSS/JS in `public/`) are instant, but `server.js` and `db.js` changes require nodemon restart (~2-3 seconds).
+- **Port differences:** Development uses port 3000, production uses port 80 (nginx) with API on internal port 3000.
 
 ## Manual Testing & Verification
 
@@ -352,10 +471,18 @@ docker-compose exec radio-calico-dev npm run test:coverage
 ```
 
 ### Manual API Testing
+
+**Development (port 3000):**
 - **Health check:** `curl http://localhost:3000/api/health`
 - **Stream accessibility:** `curl https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
 - **Metadata accessibility:** `curl https://d3d4yli4hf5bmh.cloudfront.net/metadatav2.json`
 - **Test rating endpoint:** POST to `/api/ratings` with JSON body
+
+**Production (port 80 via nginx):**
+- **Health check (nginx):** `curl http://localhost/health`
+- **Health check (API via nginx):** `curl http://localhost/api/health`
+- **Test static files:** `curl http://localhost/` (should return HTML)
+- **Test API proxy:** All API requests go through nginx reverse proxy
 
 ### Database Inspection
 
@@ -364,18 +491,24 @@ docker-compose exec radio-calico-dev npm run test:coverage
 - **Test database:** In-memory databases are created automatically for tests (no cleanup needed)
 
 **Docker database:**
-- **Development:** Database is at `./radio.db` in project directory (accessible from host)
-- **Production:** Database is in Docker volume (use backup commands from Docker Environment section)
-- **Query from container:** `docker-compose exec radio-calico-dev sqlite3 /app/radio.db`
+- **Development (SQLite):** Database is at `./radio.db` in project directory (accessible from host)
+  - Query from container: `docker-compose exec radio-calico-dev sqlite3 /app/radio.db`
+- **Production (PostgreSQL):** Database is in Docker volume `postgres-data`
+  - Connect to PostgreSQL: `docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio`
+  - Check tables: `docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio -c "\dt"`
+  - Run query: `docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio -c "SELECT * FROM listeners;"`
 
 ## File Reference
 
 ### Application Files
-- `server.js` - Entire backend (API + database + server)
+- `server.js` - Main Express server (API endpoints, routes, server lifecycle)
+- `db.js` - Database abstraction layer (supports SQLite and PostgreSQL)
+- `nginx.conf` - Nginx configuration for production (reverse proxy + static file serving)
+- `.env.example` - Environment variables template (copy to `.env` for production)
 - `public/index.html` - Frontend HTML structure (minimal, clean markup only)
 - `public/app.js` - All client-side JavaScript (player, metadata, ratings, fingerprinting)
 - `public/styles.css` - All brand styling and responsive design
-- `radio.db` - SQLite database (auto-created on first run, gitignored)
+- `radio.db` - SQLite database (auto-created on first run in development, gitignored)
 
 ### Testing Files
 - `jest.config.js` - Jest configuration (backend + frontend projects)
@@ -386,12 +519,12 @@ docker-compose exec radio-calico-dev npm run test:coverage
 
 ### Docker & Deployment Files
 - `Dockerfile` - Legacy Docker file (now redirects to dev configuration for backwards compatibility)
-- `Dockerfile.dev` - Development-optimized Docker image (hot-reloading, all dependencies, ~350MB)
-- `Dockerfile.prod` - Production-optimized Docker image (multi-stage build, non-root user, ~150MB)
-- `docker-compose.yml` - Development environment orchestration (source mounting, local database)
-- `docker-compose.prod.yml` - Production environment orchestration (volume persistence, health checks)
+- `Dockerfile.dev` - Development-optimized Docker image (hot-reloading, SQLite, all dependencies, ~350MB)
+- `Dockerfile.prod` - Production-optimized Docker image (multi-stage build, API only, non-root user, ~150MB)
+- `docker-compose.yml` - Development environment orchestration (single container, SQLite, source mounting)
+- `docker-compose.prod.yml` - Production environment orchestration (three containers: postgres + API + nginx)
 - `.dockerignore` - Docker build exclusions (tests, docs, dev files excluded from images)
-- `DOCKER.md` - Comprehensive Docker deployment guide (350+ lines covering all deployment scenarios)
+- `DOCKER.md` - Comprehensive Docker deployment guide covering PostgreSQL, nginx, three-service architecture
 - `RUNDOCKER.md` - Quick reference guide with copy-paste Docker commands (gitignored personal file)
 
 ### Configuration & Documentation
@@ -475,78 +608,156 @@ docker-compose exec radio-calico-dev npm run test:coverage
 
 ### Environment Variables
 
-The application supports the following environment variables:
+The application supports different environment variables for development and production:
 
+**Development (SQLite):**
+- **`NODE_ENV`** (default: `development`) - Environment mode
 - **`PORT`** (default: `3000`) - Server port number
-- **`NODE_ENV`** (default: `development`) - Environment mode (`development` or `production`)
+- **`DATABASE_TYPE`** (default: `sqlite`) - Database type
 - **`DB_PATH`** (default: `radio.db`) - SQLite database file path
+
+**Production (PostgreSQL):**
+- **`NODE_ENV`** (default: `production`) - Environment mode
+- **`PORT`** (default: `80`) - Nginx external port (API uses 3000 internally)
+- **`DATABASE_TYPE`** (default: `postgres`) - Database type
+- **`POSTGRES_HOST`** (default: `localhost`) - PostgreSQL hostname
+- **`POSTGRES_PORT`** (default: `5432`) - PostgreSQL port
+- **`POSTGRES_DB`** (default: `radio`) - PostgreSQL database name
+- **`POSTGRES_USER`** (default: `radio`) - PostgreSQL username
+- **`POSTGRES_PASSWORD`** (required) - PostgreSQL password
 
 **Example usage:**
 ```bash
-# Local development
-PORT=8080 NODE_ENV=development npm start
+# Local development with SQLite
+PORT=8080 NODE_ENV=development DATABASE_TYPE=sqlite npm start
 
 # Docker development (set in docker-compose.yml)
 environment:
   - PORT=3000
   - NODE_ENV=development
+  - DATABASE_TYPE=sqlite
+  - DB_PATH=radio.db
 
-# Docker production (set in docker-compose.prod.yml)
+# Docker production (set in docker-compose.prod.yml or .env file)
 environment:
-  - PORT=3000
+  - PORT=3000  # API internal port (nginx exposes port 80)
   - NODE_ENV=production
-  - DB_PATH=/app/data/radio.db
+  - DATABASE_TYPE=postgres
+  - POSTGRES_HOST=postgres
+  - POSTGRES_PORT=5432
+  - POSTGRES_DB=radio
+  - POSTGRES_USER=radio
+  - POSTGRES_PASSWORD=your_secure_password_here
+```
+
+**Using `.env` file (recommended for production):**
+```bash
+# Copy template
+cp .env.example .env
+
+# Edit .env and set secure password
+# docker-compose.prod.yml automatically loads .env file
 ```
 
 ### Docker Architecture
 
-**Development Container (`Dockerfile.dev`):**
+**Development Architecture (Single Container):**
+
+`Dockerfile.dev` creates a single development container:
 - Based on `node:22-alpine`
 - Includes build tools (python3, make, g++) for better-sqlite3 compilation
 - Installs all dependencies (including devDependencies)
 - Source code mounted as volume for hot-reloading with nodemon
-- Database file stored in project directory (`./radio.db`)
+- SQLite database file stored in project directory (`./radio.db`)
+- Serves both API and static files via Express
 - Health check pings `/api/health` every 30 seconds
 - Size: ~350MB
 
-**Production Container (`Dockerfile.prod`):**
-- Multi-stage build for optimization
-- Stage 1 (builder): Compiles dependencies
-- Stage 2 (production): Minimal runtime image
-- Runs as non-root user (`nodejs:nodejs` uid:1001)
-- Only production dependencies installed
-- Database stored in Docker named volume (`radio_radio-data`)
-- Health check with 30s interval, 40s start period
-- Auto-restart on failure
-- Size: ~150MB
+**Production Architecture (Three Containers):**
+
+Production uses three separate containers defined in `docker-compose.prod.yml`:
+
+1. **PostgreSQL Container (`postgres`):**
+   - Image: `postgres:16-alpine`
+   - Data stored in named volume `postgres-data`
+   - Environment: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+   - Health check: `pg_isready -U radio` every 10s
+   - Not exposed externally (internal only)
+
+2. **API Container (`radio-calico-api`):**
+   - Built from `Dockerfile.prod`
+   - Multi-stage build for optimization
+   - Stage 1 (builder): Compiles dependencies (better-sqlite3 + pg)
+   - Stage 2 (production): Minimal runtime image with only `server.js` and `db.js`
+   - Runs as non-root user (`nodejs:nodejs` uid:1001)
+   - Only production dependencies installed
+   - Connects to PostgreSQL via `postgres:5432`
+   - Health check: GET `http://localhost:3000/api/health` every 30s
+   - Not exposed externally (nginx proxies requests)
+   - Size: ~150MB
+
+3. **Nginx Container (`nginx`):**
+   - Image: `nginx:1.25-alpine`
+   - Serves static files from `./public` directory
+   - Reverse proxies `/api/*` requests to `radio-calico-api:3000`
+   - Adds security headers and caching
+   - Health check: GET `http://localhost/health` every 30s
+   - Exposed on port 80 (configurable)
+   - Size: ~40MB
+
+**Production container dependencies:**
+- Nginx depends on radio-calico-api
+- API depends on postgres (waits for health check)
 
 ### Database Management in Docker
 
-**Development:**
+**Development (SQLite):**
 - Database file: `./radio.db` (in project directory)
 - Persists across container restarts
 - Can be edited with SQLite tools on host machine
 - Deleted when volume is removed with `docker-compose down -v`
+- Backup: `cp radio.db radio.db.backup`
 
-**Production:**
-- Database stored in Docker named volume: `radio_radio-data`
+**Production (PostgreSQL):**
+- Database runs in separate `postgres` container
+- Data stored in Docker named volume: `postgres-data`
 - Persists even when containers are removed
-- Not directly accessible from host (requires Docker volume commands)
+- Not directly accessible from host (use `docker exec` commands)
 
-**Backup production database:**
+**Backup production PostgreSQL database:**
 ```bash
-docker run --rm \
-  -v radio_radio-data:/data \
-  -v ${PWD}:/backup \
-  alpine tar czf /backup/db-backup.tar.gz -C /data .
+# SQL dump (recommended)
+docker-compose -f docker-compose.prod.yml exec -T postgres pg_dump -U radio radio > backup.sql
+
+# Compressed SQL dump
+docker-compose -f docker-compose.prod.yml exec -T postgres pg_dump -U radio radio | gzip > backup.sql.gz
+
+# Custom format (faster restore)
+docker-compose -f docker-compose.prod.yml exec -T postgres pg_dump -U radio -Fc radio > backup.dump
 ```
 
-**Restore production database:**
+**Restore production PostgreSQL database:**
 ```bash
-docker run --rm \
-  -v radio_radio-data:/data \
-  -v ${PWD}:/backup \
-  alpine tar xzf /backup/db-backup.tar.gz -C /data
+# From SQL dump
+cat backup.sql | docker-compose -f docker-compose.prod.yml exec -T postgres psql -U radio -d radio
+
+# From compressed SQL dump
+gunzip -c backup.sql.gz | docker-compose -f docker-compose.prod.yml exec -T postgres psql -U radio -d radio
+
+# From custom format
+docker-compose -f docker-compose.prod.yml exec -T postgres pg_restore -U radio -d radio -c < backup.dump
+```
+
+**Access PostgreSQL directly:**
+```bash
+# Connect with psql
+docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio
+
+# Check tables
+docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio -c "\dt"
+
+# Run query
+docker-compose -f docker-compose.prod.yml exec postgres psql -U radio -d radio -c "SELECT COUNT(*) FROM song_ratings;"
 ```
 
 ### Docker Development Workflow

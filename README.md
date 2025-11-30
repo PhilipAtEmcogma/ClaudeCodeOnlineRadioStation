@@ -99,7 +99,10 @@ The application uses a modern **horizontal two-column layout**:
 
 - **Runtime:** Node.js v22.16.0
 - **Web Framework:** Express.js
-- **Database:** SQLite with better-sqlite3
+- **Database:**
+  - Development: SQLite with better-sqlite3
+  - Production: PostgreSQL 16
+- **Web Server (Production):** Nginx (reverse proxy + static file serving)
 - **Audio Streaming:** HLS.js
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
 - **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
@@ -137,11 +140,16 @@ The application uses a modern **horizontal two-column layout**:
 
 ### Docker Deployment
 
-The application includes separate Docker configurations for development and production deployments.
+The application uses **different architectures for development and production**:
+
+**Development:** Single container with SQLite database
+**Production:** Three-container architecture with PostgreSQL database, Node.js API, and Nginx web server
 
 **⚠️ IMPORTANT:** Before running any Docker commands, ensure **Docker Desktop is running**. Open Docker Desktop from your Start Menu and wait for the whale icon to appear steady in your system tray. Verify with `docker ps` command.
 
-#### Development Mode (with hot-reloading)
+#### Development Mode (SQLite + Express)
+Single container that serves both API and static files:
+
 ```bash
 # Start development server
 docker-compose up --build
@@ -153,22 +161,40 @@ docker-compose up -d --build
 docker-compose logs -f
 ```
 
-#### Production Mode (optimized build)
+**Access:** http://localhost:3000
+
+#### Production Mode (PostgreSQL + Nginx + API)
+Three containers working together:
+- **PostgreSQL:** Production database
+- **API:** Express.js backend (API only)
+- **Nginx:** Web server (static files + reverse proxy)
+
 ```bash
-# Start production server
+# 1. Configure environment variables (REQUIRED)
+cp .env.example .env
+# Edit .env and set a strong POSTGRES_PASSWORD
+
+# 2. Start all services
 docker-compose -f docker-compose.prod.yml up --build -d
 
-# View logs
+# 3. Verify all services are healthy
+docker ps  # Should show 3 containers: postgres, radio-calico-api, nginx
+
+# 4. View logs
 docker-compose -f docker-compose.prod.yml logs -f
 
 # Stop the server
 docker-compose -f docker-compose.prod.yml down
 ```
 
-**Access the application:** http://localhost:3000
+**Access:** http://localhost:80 (or custom port configured in `.env`)
+
+**Why different architectures?**
+- **Development:** SQLite is simple, requires no configuration, perfect for local development
+- **Production:** PostgreSQL handles concurrent connections better, Nginx provides superior static file performance and security
 
 **Docker Documentation:**
-- **[DOCKER.md](DOCKER.md)** - Comprehensive deployment guide (350+ lines) covering all deployment scenarios, database management, troubleshooting, and best practices
+- **[DOCKER.md](DOCKER.md)** - Comprehensive deployment guide covering PostgreSQL management, nginx configuration, three-service architecture, backup strategies, and troubleshooting
 - **RUNDOCKER.md** - Quick reference guide with copy-paste commands (personal file, gitignored)
 
 ## Project Structure
@@ -176,8 +202,11 @@ docker-compose -f docker-compose.prod.yml down
 ```
 Radio/
 ├── server.js                      # Main Express server & API endpoints
+├── db.js                          # Database abstraction layer (SQLite/PostgreSQL)
+├── nginx.conf                     # Nginx configuration (production)
 ├── package.json                   # Node.js dependencies
-├── radio.db                       # SQLite database (auto-created, gitignored)
+├── .env.example                   # Environment variables template
+├── radio.db                       # SQLite database (dev, auto-created, gitignored)
 ├── public/
 │   ├── index.html                # Radio player HTML structure
 │   ├── app.js                    # Client-side JavaScript (player logic)
@@ -556,13 +585,32 @@ Check console output for debugging.
 
 ### Environment Variables
 
+**Development (SQLite):**
 ```bash
-PORT=3000                    # Server port (default: 3000)
-NODE_ENV=production          # Environment mode (development or production)
-DB_PATH=/path/to/radio.db    # Database file path (default: radio.db)
+NODE_ENV=development         # Environment mode
+PORT=3000                    # Server port
+DATABASE_TYPE=sqlite         # Database type
+DB_PATH=radio.db             # SQLite database file path
 ```
 
-The `DB_PATH` variable is especially useful for Docker deployments where the database should be stored in a persistent volume.
+**Production (PostgreSQL):**
+```bash
+NODE_ENV=production          # Environment mode
+PORT=80                      # Nginx external port (API uses 3000 internally)
+DATABASE_TYPE=postgres       # Database type
+POSTGRES_HOST=postgres       # PostgreSQL hostname (container name)
+POSTGRES_PORT=5432           # PostgreSQL port
+POSTGRES_DB=radio            # Database name
+POSTGRES_USER=radio          # Database user
+POSTGRES_PASSWORD=your_secure_password  # Database password (REQUIRED)
+```
+
+**Using `.env` file (recommended for production):**
+```bash
+cp .env.example .env
+# Edit .env and set your values
+# IMPORTANT: Use a strong password for POSTGRES_PASSWORD
+```
 
 ### Performance Optimization
 
