@@ -106,6 +106,8 @@ The application uses a modern **horizontal two-column layout**:
 - **Audio Streaming:** HLS.js
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
 - **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
+- **Security:** helmet.js, express-rate-limit, express-validator
+- **Security Testing:** Snyk, ESLint, Semgrep, Trivy, OWASP ZAP
 - **Auto-reload:** Nodemon (development)
 
 ## Prerequisites
@@ -248,6 +250,9 @@ Radio/
 │           └── setup.js          # Test configuration
 ├── jest.config.js                 # Jest test configuration
 ├── TESTING.md                     # Testing documentation
+├── SECURITY.md                    # Security testing guide and best practices
+├── SECURITY-AUDIT-REPORT.md       # Security audit findings and remediation
+├── .eslintrc.json                 # ESLint configuration with security plugins
 ├── RadioCalico_Style_Guide.txt    # Official brand style guide
 ├── RadioCalicoLayout.png          # Reference layout mockup
 ├── RadioCalicoLogoTM.png          # Logo source file
@@ -269,9 +274,9 @@ Radio/
 
 **Files tracked in Git (committed to repository):**
 - ✅ All Docker configuration files (`Dockerfile*`, `docker-compose*.yml`, `.dockerignore`)
-- ✅ Source code (`server.js`, `public/*`, `tests/*`)
-- ✅ Documentation (`README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`)
-- ✅ Configuration (`package.json`, `jest.config.js`)
+- ✅ Source code (`server.js`, `db.js`, `public/*`, `tests/*`)
+- ✅ Documentation (`README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`, `SECURITY.md`, `SECURITY-AUDIT-REPORT.md`)
+- ✅ Configuration (`package.json`, `jest.config.js`, `Makefile`, `.eslintrc.json`)
 - ✅ Design assets (`RadioCalico_Style_Guide.txt`, `RadioCalicoLayout.png`)
 
 **Files ignored by Git (in `.gitignore`):**
@@ -281,6 +286,7 @@ Radio/
 - 🚫 Test coverage reports (`coverage/`)
 - 🚫 Security reports (`reports/`)
 - 🚫 Database backups (`backups/`)
+- 🚫 Security tool cache (`.snyk`)
 - 🚫 Personal reference files (`RUNDOCKER.md`)
 - 🚫 Docker runtime files (`docker-compose.override.yml`, `.docker/`)
 - 🚫 OS-specific files (`.DS_Store`, `Thumbs.db`)
@@ -409,47 +415,134 @@ When adding new features, write tests following these patterns:
 
 See `TESTING.md` for detailed documentation, examples, and helper API reference.
 
-## Security Scanning
+## Security
 
-The project includes security scanning using npm audit to detect known vulnerabilities in dependencies.
+The application implements comprehensive security measures including rate limiting, input validation, security headers, and automated security testing.
+
+### Security Features
+
+**1. Rate Limiting**
+- General API: 100 requests per 15 minutes
+- Write operations: 30 requests per 15 minutes
+- Ratings/voting: 10 votes per minute
+- Protects against abuse and DoS attacks
+
+**2. Input Validation**
+- All user input validated with express-validator
+- Character whitelisting and length limits
+- XSS protection via HTML escaping
+- SQL injection prevention via parameterized queries
+
+**3. Security Headers**
+- Content-Security-Policy (prevents XSS)
+- X-Frame-Options (prevents clickjacking)
+- Strict-Transport-Security (enforces HTTPS)
+- X-Content-Type-Options (prevents MIME sniffing)
+- Implemented via helmet.js
+
+**4. CORS Protection**
+- Restricted origins in production (via `ALLOWED_ORIGINS` env var)
+- Limited to GET, POST, PATCH methods
+- Prevents cross-origin attacks
+
+**5. Request Size Limits**
+- Body size limited to 10kb
+- Prevents DoS via large payloads
+
+### Security Testing
+
+The project includes multiple security testing tools:
+
+**Dependency Scanning:**
+- **npm audit** - Built-in vulnerability scanner
+- **Snyk** - Enhanced scanning with larger database
+
+**Static Analysis:**
+- **ESLint + security plugins** - Detects unsafe code patterns
+- **Semgrep** - Pattern-based OWASP Top 10 scanner
+
+**Container Security:**
+- **Trivy** - Scans Docker images for vulnerabilities
+
+**Dynamic Testing:**
+- **OWASP ZAP** - Penetration testing for running application
 
 ### Running Security Scans
 
 ```bash
-# Using npm scripts
-npm run audit                # Basic security audit
-npm run audit:fix            # Automatically fix vulnerabilities
-npm run security             # Run audit (moderate+ severity)
-npm run security:critical    # Run audit (critical severity only)
+# Install security tools first (one-time)
+make security-install
 
-# Using Make (recommended for convenience)
-make security                # Comprehensive security audit
-make security-critical       # Critical severity audit only
-make security-fix            # Automatically fix vulnerabilities
-make security-report         # Generate detailed reports (JSON + text)
+# Quick scan (before commits)
+make security                # npm audit
+
+# Comprehensive scan (before deployments)
+make security-full           # All tools: npm audit, Snyk, ESLint, Semgrep, Trivy
+
+# Individual scans
+make security-deps           # Snyk dependency scan
+make security-code           # ESLint + Semgrep static analysis
+make security-docker         # Trivy container scan
+make security-api            # OWASP ZAP (requires running server)
+
+# Generate detailed reports
+make security-report         # JSON + text reports in reports/
+
+# Fix vulnerabilities
+make security-fix            # Auto-fix dependencies
 ```
+
+### Security Reports
+
+All security reports are saved in the `reports/` directory:
+
+- `security-audit.json/txt` - npm audit results
+- `snyk-report.json/txt` - Dependency vulnerabilities
+- `eslint-security.json/txt` - Code security issues
+- `semgrep-report.json/txt` - Pattern-based findings
+- `trivy-*.txt` - Container vulnerabilities (dev, api, nginx)
+- `zap-report.json/html` - Penetration test results
+
+### Security Documentation
+
+- **`SECURITY.md`** - Comprehensive security testing guide
+  - Tool installation and configuration
+  - Detailed testing procedures
+  - Security best practices
+  - Vulnerability response process
+  - GDPR/CCPA compliance considerations
+
+- **`SECURITY-AUDIT-REPORT.md`** - Security audit findings
+  - 2 Critical issues
+  - 4 High severity issues
+  - 6 Medium severity issues
+  - Prioritized remediation roadmap
+  - Production deployment checklist
 
 ### Security Best Practices
 
-1. **Run security scans regularly:**
-   - Before each deployment
-   - After adding or updating dependencies
-   - As part of your CI/CD pipeline
+**Before Every Commit:**
+```bash
+make security          # Check for vulnerabilities
+make test              # Ensure tests pass
+```
 
-2. **Review security reports:**
-   - `make security-report` generates detailed reports in `reports/`
-   - Review both JSON and text formats for comprehensive analysis
-   - Prioritize critical and high-severity vulnerabilities
+**Before Every Deployment:**
+```bash
+make security-full     # Comprehensive security scan
+make test-coverage     # Verify test coverage
+npm outdated           # Check for updates
+# Review all HIGH/CRITICAL findings
+# Set ALLOWED_ORIGINS in .env
+# Verify HTTPS is configured
+```
 
-3. **Keep dependencies updated:**
-   - Run `npm audit fix` to automatically patch vulnerabilities
-   - Review breaking changes before applying major version updates
-   - Use `npm outdated` to check for available updates
-
-4. **Production deployments:**
-   - Always run `make security` before deploying to production
-   - Ensure no critical vulnerabilities exist
-   - Document any acceptable risk in security reports
+**Production Requirements:**
+- [ ] HTTPS/TLS configured in nginx
+- [ ] `ALLOWED_ORIGINS` environment variable set
+- [ ] Strong PostgreSQL password
+- [ ] All CRITICAL/HIGH security issues resolved
+- [ ] Security monitoring in place
 
 ## Configuration
 
@@ -632,19 +725,34 @@ Check console output for debugging.
 
 ### Production Checklist
 
-- [ ] **Run tests:** `npm test` or `make test` (ensure all tests pass)
+**Security (Critical):**
+- [ ] **Run comprehensive security scan:** `make security-full`
+- [ ] **Review security audit:** Address all CRITICAL/HIGH findings in `SECURITY-AUDIT-REPORT.md`
+- [ ] **Configure HTTPS/TLS:** Set up SSL certificates in nginx (Let's Encrypt recommended)
+- [ ] **Set ALLOWED_ORIGINS:** Configure allowed domains in `.env`
+- [ ] **Strong passwords:** Use strong PostgreSQL password in `.env`
+- [ ] **Authentication:** Add authentication for admin endpoints (feedback, request management)
+- [ ] **CSRF protection:** Implement CSRF tokens (especially important if adding auth)
+- [ ] **Error handling:** Sanitize error messages (no stack traces in production)
+
+**Testing:**
+- [ ] **Run all tests:** `npm test` or `make test` (ensure all tests pass)
 - [ ] **Check coverage:** `npm run test:coverage` or `make test-coverage` (verify thresholds met)
-- [ ] **Run security scan:** `npm run security` or `make security` (check for vulnerabilities)
-- [ ] **Generate security report:** `make security-report` (document any acceptable risks)
+- [ ] **Load testing:** Test under expected traffic load
+
+**Infrastructure:**
 - [ ] Set `NODE_ENV=production`
-- [ ] Configure proper CORS origins
-- [ ] Use a reverse proxy (Nginx, Caddy)
-- [ ] Enable HTTPS
-- [ ] Set up database backups
-- [ ] Configure rate limiting
-- [ ] Monitor server logs
+- [ ] Use a reverse proxy (Nginx ✅ already configured)
+- [ ] Set up database backups (automated)
+- [ ] Configure monitoring and alerting
 - [ ] Set up health check monitoring
 - [ ] Consider using a CDN for static assets
+- [ ] Set up log aggregation (e.g., ELK stack)
+
+**Documentation:**
+- [ ] Update environment variables in `.env`
+- [ ] Document deployment procedure
+- [ ] Create incident response plan
 
 ### Environment Variables
 
