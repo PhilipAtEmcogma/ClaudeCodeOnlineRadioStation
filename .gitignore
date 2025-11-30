@@ -10,6 +10,19 @@ node_modules
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+.env.test
+
+# Security-sensitive files
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+credentials.json
+secrets.json
+config/secrets.yml
 
 # OS files
 .DS_Store

@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-radio}
       POSTGRES_USER: ${POSTGRES_USER:-radio}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in .env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -37,7 +37,7 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-radio}
       - POSTGRES_USER=${POSTGRES_USER:-radio}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in .env file}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file}
     networks:
       - radio-network
     healthcheck:

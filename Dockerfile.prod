@@ -39,9 +39,8 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Copy pre-built node_modules from builder stage (includes better-sqlite3 and pg already compiled)
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 
 # Copy application files from builder (API only, nginx serves static files)
 COPY --from=builder --chown=nodejs:nodejs /app/server.js ./
