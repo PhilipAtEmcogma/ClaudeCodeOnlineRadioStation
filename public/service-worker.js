@@ -1,10 +1,15 @@
 // Radio Calico Service Worker
 // Provides offline capability and aggressive caching for static assets
+//
+// NOTE: This file is processed during build by vite.config.js
+// The PRECACHE_ASSETS array is automatically updated with hashed filenames
+// and console.log statements are removed for production
 
 const CACHE_VERSION = 'v1';
 const CACHE_NAME = `radio-calico-${CACHE_VERSION}`;
 
 // Assets to cache immediately on install
+// This array is replaced during build with actual hashed filenames
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',

@@ -42,6 +42,8 @@ Radio Calico implements world-class performance optimizations achieving **95-100
 
 ### Phase 3: Advanced Optimizations
 - **Service Worker**: Offline capability + instant repeat visits (<100ms vs 1-2s)
+  - Build-time manifest injection: Vite plugin automatically generates precache list with hashed filenames
+  - Console statements stripped for production
 - **Brotli compression**: 15-20% better than gzip (nginx in production)
 - **Lazy fingerprinting**: Deferred until user interaction (saves 15-30ms on load)
 - **Page Visibility API**: Pauses metadata polling when tab hidden (50-90% reduction in API calls)
@@ -204,6 +206,7 @@ The nginx.conf includes a Content Security Policy that allows:
 - **index.html** - Semantic markup with critical CSS inlined (~6KB with inlined styles)
 - **app.js** - ES module with HLS player, Service Worker registration, lazy fingerprinting, Page Visibility API, metadata fetching, ratings (~540 lines)
 - **service-worker.js** - Offline capability, precaching, cache-first strategy (~130 lines, 3.8KB)
+  - Processed during build: manifest auto-generated with hashed filenames, console.log stripped
 - **styles.css** - Brand colors, two-column layout, responsive breakpoints (~7.6KB source, 5.3KB built)
 - **favicon.svg** - SVG favicon with Radio Calico branding (~500 bytes)
 - **critical.css** - Extracted critical above-the-fold CSS (~2KB, reference only)
@@ -215,7 +218,7 @@ The nginx.conf includes a Content Security Policy that allows:
 - `main.[hash].js` - App code (7.3KB, 3.2KB gzipped)
 - `hls.[hash].js` - HLS.js library (517KB, 157KB gzipped)
 - `styles.[hash].css` - Minified styles (5.3KB, 1.6KB gzipped)
-- `service-worker.js` - Copied as-is for service worker registration
+- `service-worker.js` - Auto-generated with manifest of hashed files, console.log removed
 - Images with hashed filenames for cache busting
 
 **Key frontend features:**
