@@ -62,7 +62,9 @@ Radio Calico delivers **world-class performance** with comprehensive optimizatio
 - Asset hashing for long-term caching
 
 **💾 Offline Capability:**
-- **Service Worker** with precaching strategy
+- **Service Worker** with build-time manifest injection
+  - Auto-generates precache list with hashed filenames
+  - Console statements stripped for production
 - Instant repeat visits (<100ms vs 1-2s)
 - Works completely offline for core functionality
 
@@ -338,7 +340,7 @@ Radio/
 │   ├── main.[hash].js            # Minified app code (7.3KB, 3.2KB gzipped)
 │   ├── hls.[hash].js             # HLS.js library chunk (517KB, 157KB gzipped)
 │   ├── styles.[hash].css         # Minified CSS (5.3KB, 1.6KB gzipped)
-│   ├── service-worker.js         # Service Worker (3.8KB)
+│   ├── service-worker.js         # Service Worker (auto-generated with manifest)
 │   └── [images with hashes]      # Optimized images with cache-busting hashes
 ├── tests/                         # Testing framework
 │   ├── backend/
