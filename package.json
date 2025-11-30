@@ -10,7 +10,11 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:backend": "jest --selectProjects backend",
-    "test:frontend": "jest --selectProjects frontend"
+    "test:frontend": "jest --selectProjects frontend",
+    "audit": "npm audit",
+    "audit:fix": "npm audit fix",
+    "security": "npm audit --audit-level=moderate",
+    "security:critical": "npm audit --audit-level=critical"
   },
   "keywords": [],
   "author": "",

@@ -121,11 +121,15 @@ The application uses a modern **horizontal two-column layout**:
 1. **Install dependencies:**
    ```bash
    npm install
+   # Or using Make:
+   make install
    ```
 
 2. **Start the development server:**
    ```bash
-   npm start
+   npm run dev              # Development mode with auto-reload
+   # Or using Make:
+   make dev
    ```
 
 3. **Access the application:**
@@ -136,7 +140,19 @@ The application uses a modern **horizontal two-column layout**:
    ```bash
    npm test                 # Run all tests
    npm run test:coverage    # Run with coverage report
+   # Or using Make:
+   make test
+   make test-coverage
    ```
+
+5. **Run security scans (recommended):**
+   ```bash
+   npm run security         # Check for vulnerabilities
+   # Or using Make:
+   make security
+   ```
+
+**Tip:** Run `make` or `make help` to see all available commands.
 
 ### Docker Deployment
 
@@ -205,6 +221,7 @@ Radio/
 ├── db.js                          # Database abstraction layer (SQLite/PostgreSQL)
 ├── nginx.conf                     # Nginx configuration (production)
 ├── package.json                   # Node.js dependencies
+├── Makefile                       # Development, testing, security, and Docker shortcuts
 ├── .env.example                   # Environment variables template
 ├── radio.db                       # SQLite database (dev, auto-created, gitignored)
 ├── public/
@@ -262,6 +279,8 @@ Radio/
 - 🚫 Dependencies (`node_modules/`)
 - 🚫 Secrets (`.env*`)
 - 🚫 Test coverage reports (`coverage/`)
+- 🚫 Security reports (`reports/`)
+- 🚫 Database backups (`backups/`)
 - 🚫 Personal reference files (`RUNDOCKER.md`)
 - 🚫 Docker runtime files (`docker-compose.override.yml`, `.docker/`)
 - 🚫 OS-specific files (`.DS_Store`, `Thumbs.db`)
@@ -389,6 +408,48 @@ When adding new features, write tests following these patterns:
    - Mock fetch API for network requests
 
 See `TESTING.md` for detailed documentation, examples, and helper API reference.
+
+## Security Scanning
+
+The project includes security scanning using npm audit to detect known vulnerabilities in dependencies.
+
+### Running Security Scans
+
+```bash
+# Using npm scripts
+npm run audit                # Basic security audit
+npm run audit:fix            # Automatically fix vulnerabilities
+npm run security             # Run audit (moderate+ severity)
+npm run security:critical    # Run audit (critical severity only)
+
+# Using Make (recommended for convenience)
+make security                # Comprehensive security audit
+make security-critical       # Critical severity audit only
+make security-fix            # Automatically fix vulnerabilities
+make security-report         # Generate detailed reports (JSON + text)
+```
+
+### Security Best Practices
+
+1. **Run security scans regularly:**
+   - Before each deployment
+   - After adding or updating dependencies
+   - As part of your CI/CD pipeline
+
+2. **Review security reports:**
+   - `make security-report` generates detailed reports in `reports/`
+   - Review both JSON and text formats for comprehensive analysis
+   - Prioritize critical and high-severity vulnerabilities
+
+3. **Keep dependencies updated:**
+   - Run `npm audit fix` to automatically patch vulnerabilities
+   - Review breaking changes before applying major version updates
+   - Use `npm outdated` to check for available updates
+
+4. **Production deployments:**
+   - Always run `make security` before deploying to production
+   - Ensure no critical vulnerabilities exist
+   - Document any acceptable risk in security reports
 
 ## Configuration
 
@@ -571,8 +632,10 @@ Check console output for debugging.
 
 ### Production Checklist
 
-- [ ] **Run tests:** `npm test` (ensure all 40 tests pass)
-- [ ] **Check coverage:** `npm run test:coverage` (verify thresholds met)
+- [ ] **Run tests:** `npm test` or `make test` (ensure all tests pass)
+- [ ] **Check coverage:** `npm run test:coverage` or `make test-coverage` (verify thresholds met)
+- [ ] **Run security scan:** `npm run security` or `make security` (check for vulnerabilities)
+- [ ] **Generate security report:** `make security-report` (document any acceptable risks)
 - [ ] Set `NODE_ENV=production`
 - [ ] Configure proper CORS origins
 - [ ] Use a reverse proxy (Nginx, Caddy)
