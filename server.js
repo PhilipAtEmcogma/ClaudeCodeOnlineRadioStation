@@ -41,24 +41,34 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Rate limiting - Different limits for different endpoint types
+// Configure trust proxy to prevent X-Forwarded-For spoofing
+const rateLimitConfig = {
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  trustProxy: 1, // Trust first proxy (prevents header spoofing)
+};
+
 const generalLimiter = rateLimit({
+  ...rateLimitConfig,
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
 const strictLimiter = rateLimit({
+  ...rateLimitConfig,
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 30, // Stricter limit for write operations
   message: 'Too many submissions from this IP, please try again later.',
 });
 
 const ratingsLimiter = rateLimit({
+  ...rateLimitConfig,
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 10, // 10 votes per minute per IP
   message: 'Too many rating submissions, please slow down.',
+  // Use fingerprint-based key for additional protection
+  keyGenerator: (req) => getUserFingerprint(req),
 });
 
 // Apply general rate limiting to all API routes
@@ -73,11 +83,18 @@ app.use(express.static('public'));
 
 // Helper function to get client IP address
 function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-         req.headers['x-real-ip'] ||
-         req.connection.remoteAddress ||
-         req.socket.remoteAddress ||
-         req.connection.socket?.remoteAddress ||
+  const forwardedFor = req.headers['x-forwarded-for'];
+
+  // Handle x-forwarded-for being an array or string
+  if (forwardedFor) {
+    const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
+    return ip.trim();
+  }
+
+  return req.headers['x-real-ip'] ||
+         req.connection?.remoteAddress ||
+         req.socket?.remoteAddress ||
+         req.connection?.socket?.remoteAddress ||
          'unknown';
 }
 
@@ -112,6 +129,25 @@ function handleValidationErrors(req, res, next) {
   next();
 }
 
+// Helper function to format error responses safely
+function formatError(error, statusCode = 500) {
+  if (process.env.NODE_ENV === 'production') {
+    // Generic error in production to avoid exposing internals
+    console.error('Error:', error);
+    return {
+      status: statusCode,
+      body: { error: 'Internal server error' }
+    };
+  } else {
+    // Detailed error in development for debugging
+    console.error('Error:', error);
+    return {
+      status: statusCode,
+      body: { error: error.message }
+    };
+  }
+}
+
 // ============= LISTENERS API =============
 
 // Register new listener or update existing
@@ -141,7 +177,8 @@ app.post('/api/listeners',
       res.json({ message: 'Listener registered', id: result.lastInsertRowid });
     }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -156,7 +193,8 @@ app.get('/api/listeners/stats', async (req, res) => {
     `);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -187,7 +225,8 @@ app.post('/api/sessions/start',
 
     res.json({ message: 'Session started', session_id: result.lastInsertRowid });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -234,7 +273,8 @@ app.post('/api/sessions/end',
 
     res.json({ message: 'Session ended', duration_minutes: duration });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -280,7 +320,8 @@ app.post('/api/requests',
       id: result.lastInsertRowid
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -298,7 +339,8 @@ app.get('/api/requests',
     const requests = await database.all('SELECT * FROM song_requests WHERE status = ? ORDER BY created_at DESC', [status]);
     res.json(requests);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -324,7 +366,8 @@ app.patch('/api/requests/:id',
 
     res.json({ message: 'Request updated' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -368,7 +411,8 @@ app.post('/api/feedback',
       id: result.lastInsertRowid
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -378,7 +422,8 @@ app.get('/api/feedback', async (req, res) => {
     const feedback = await database.all('SELECT * FROM feedback ORDER BY created_at DESC');
     res.json(feedback);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -394,7 +439,8 @@ app.get('/api/feedback/rating', async (req, res) => {
     `);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -407,8 +453,9 @@ app.post('/api/ratings',
     body('song_id')
       .trim()
       .notEmpty().withMessage('song_id is required')
-      .isLength({ max: 255 }).withMessage('song_id too long')
-      .matches(/^[a-zA-Z0-9_: -]+$/).withMessage('song_id contains invalid characters'),
+      .isLength({ max: 255 }).withMessage('song_id too long'),
+      // Note: No character restrictions - song titles can contain unicode, special chars, etc.
+      // SQL injection is prevented by parameterized queries
     body('session_id')
       .trim()
       .notEmpty().withMessage('session_id is required')
@@ -471,8 +518,8 @@ app.post('/api/ratings',
       user_rating: rating
     });
   } catch (error) {
-    console.error('Error submitting rating:', error);
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -483,7 +530,7 @@ app.get('/api/ratings/:song_id',
       .trim()
       .notEmpty().withMessage('song_id is required')
       .isLength({ max: 255 }).withMessage('song_id too long')
-      .matches(/^[a-zA-Z0-9_: -]+$/).withMessage('song_id contains invalid characters')
+      // Note: No character restrictions - song titles can contain unicode, special chars, etc.
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -518,7 +565,8 @@ app.get('/api/ratings/:song_id',
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 

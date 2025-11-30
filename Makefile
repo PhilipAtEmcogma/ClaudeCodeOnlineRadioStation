@@ -170,9 +170,9 @@ security-code:
 	@echo ""
 	@echo "2/2 Running Semgrep (pattern-based scanner)..."
 	@if command -v docker >/dev/null 2>&1; then \
-		docker run --rm -v $(shell pwd):/src returntocorp/semgrep \
+		docker run --rm -v "$(CURDIR):/src" returntocorp/semgrep \
 			--config=auto --json --output=/src/reports/semgrep-report.json /src 2>&1 || true; \
-		docker run --rm -v $(shell pwd):/src returntocorp/semgrep \
+		docker run --rm -v "$(CURDIR):/src" returntocorp/semgrep \
 			--config=auto /src > reports/semgrep-report.txt 2>&1 || true; \
 		echo "Semgrep scan complete!"; \
 	else \
@@ -224,7 +224,7 @@ security-api:
 	@if command -v docker >/dev/null 2>&1; then \
 		echo "Running ZAP baseline scan..."; \
 		docker run --rm --network host \
-			-v $(shell pwd)/reports:/zap/wrk:rw \
+			-v "$(CURDIR)/reports:/zap/wrk:rw" \
 			owasp/zap2docker-stable zap-baseline.py \
 			-t http://localhost:3000 \
 			-r zap-report.html \
