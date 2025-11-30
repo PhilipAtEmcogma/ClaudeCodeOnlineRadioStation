@@ -15,6 +15,11 @@ async function initializeDatabase() {
   if (DATABASE_TYPE === 'postgres') {
     const { Pool } = require('pg');
 
+    // Validate required PostgreSQL credentials
+    if (!process.env.POSTGRES_PASSWORD) {
+      throw new Error('POSTGRES_PASSWORD environment variable is required for PostgreSQL connection');
+    }
+
     db = new Pool({
       host: process.env.POSTGRES_HOST || 'localhost',
       port: process.env.POSTGRES_PORT || 5432,
@@ -28,6 +33,16 @@ async function initializeDatabase() {
 
     dbType = 'postgres';
     console.log('📊 Using PostgreSQL database');
+
+    // Test the connection
+    try {
+      const client = await db.connect();
+      console.log('✅ PostgreSQL connection successful');
+      client.release();
+    } catch (error) {
+      console.error('❌ PostgreSQL connection failed:', error.message);
+      throw new Error(`Failed to connect to PostgreSQL: ${error.message}`);
+    }
 
     await createPostgresSchema();
     await migratePostgresSchema();
@@ -254,9 +269,10 @@ async function migratePostgresSchema() {
 async function query(sql, params = []) {
   if (dbType === 'postgres') {
     // PostgreSQL uses $1, $2, etc. for parameters
-    const pgSql = sql.replace(/\?/g, (_, index) => {
-      const count = sql.substring(0, _).split('?').length;
-      return `$${count}`;
+    let paramIndex = 0;
+    const pgSql = sql.replace(/\?/g, () => {
+      paramIndex++;
+      return `$${paramIndex}`;
     });
     const result = await db.query(pgSql, params);
     return result.rows;
@@ -281,9 +297,10 @@ async function query(sql, params = []) {
  */
 async function get(sql, params = []) {
   if (dbType === 'postgres') {
-    const pgSql = sql.replace(/\?/g, (_, index) => {
-      const count = sql.substring(0, _).split('?').length;
-      return `$${count}`;
+    let paramIndex = 0;
+    const pgSql = sql.replace(/\?/g, () => {
+      paramIndex++;
+      return `$${paramIndex}`;
     });
     const result = await db.query(pgSql, params);
     return result.rows[0] || null;
@@ -298,14 +315,15 @@ async function get(sql, params = []) {
  */
 async function run(sql, params = []) {
   if (dbType === 'postgres') {
-    const pgSql = sql.replace(/\?/g, (_, index) => {
-      const count = sql.substring(0, _).split('?').length;
-      return `$${count}`;
+    let paramIndex = 0;
+    const pgSql = sql.replace(/\?/g, () => {
+      paramIndex++;
+      return `$${paramIndex}`;
     });
 
-    // For INSERT, add RETURNING id to get the inserted ID
+    // For INSERT, add RETURNING id to get the inserted ID (if not already present)
     let finalSql = pgSql;
-    if (sql.trim().toUpperCase().startsWith('INSERT')) {
+    if (sql.trim().toUpperCase().startsWith('INSERT') && !pgSql.toUpperCase().includes('RETURNING')) {
       finalSql = pgSql.replace(/;?\s*$/, ' RETURNING id');
     }
 
@@ -330,9 +348,10 @@ async function run(sql, params = []) {
  */
 async function all(sql, params = []) {
   if (dbType === 'postgres') {
-    const pgSql = sql.replace(/\?/g, (_, index) => {
-      const count = sql.substring(0, _).split('?').length;
-      return `$${count}`;
+    let paramIndex = 0;
+    const pgSql = sql.replace(/\?/g, () => {
+      paramIndex++;
+      return `$${paramIndex}`;
     });
     const result = await db.query(pgSql, params);
     return result.rows;
