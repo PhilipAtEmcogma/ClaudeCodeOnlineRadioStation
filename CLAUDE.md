@@ -18,6 +18,7 @@ The application uses **different architectures for development and production**:
 - **Deployment:** Single Docker container
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3 with HLS.js for audio streaming
 - **Testing:** Jest with Supertest (backend) and Testing Library (frontend)
+- **Security:** helmet.js, express-rate-limit, express-validator
 - **Auto-reload:** Nodemon
 
 ### Production
@@ -27,8 +28,30 @@ The application uses **different architectures for development and production**:
 - **Deployment:** Three Docker containers (postgres, radio-calico-api, nginx)
 - **Database Abstraction:** Custom db.js layer supports both SQLite and PostgreSQL
 - **Containerization:** Docker Compose with health checks and restart policies
+- **Security:** Rate limiting, input validation, security headers, CORS restrictions
 
 ## Development Commands
+
+### Using Make (Recommended)
+
+The project includes a comprehensive Makefile with convenient shortcuts for all common tasks. Run `make help` or just `make` to see all available targets:
+
+```bash
+make                         # Show all available targets
+make install                 # Install npm dependencies
+make dev                     # Start development server with auto-reload
+make test                    # Run all tests
+make test-coverage           # Run tests with coverage
+make security                # Run security audit
+make docker-dev              # Start development Docker container
+make docker-prod             # Start production Docker containers
+```
+
+**Why use Make?**
+- Shorter, easier-to-remember commands
+- Consistent interface across development, testing, security, and Docker workflows
+- Built-in help with `make help`
+- Cross-platform compatibility (works on Windows with Make for Windows, macOS, Linux)
 
 ### Start the server
 ```bash
@@ -89,6 +112,24 @@ npm run test:coverage        # Run tests with coverage report
 ```
 
 **IMPORTANT:** See `TESTING.md` for complete testing documentation, test structure, and writing new tests.
+
+### Security scanning commands
+```bash
+npm run audit                # Run basic security audit
+npm run audit:fix            # Automatically fix security vulnerabilities
+npm run security             # Run security audit (moderate+ severity)
+npm run security:critical    # Run security audit (critical only)
+```
+
+**Using Make for convenience:**
+```bash
+make security                # Run comprehensive security audit
+make security-critical       # Run critical severity audit only
+make security-fix            # Automatically fix vulnerabilities
+make security-report         # Generate detailed security reports (JSON + text)
+```
+
+**IMPORTANT:** Security scanning uses npm audit to check for known vulnerabilities in dependencies. Run security scans regularly, especially before deployments. The `make security-report` target generates detailed reports in the `reports/` directory for review.
 
 ## High-Level Architecture
 
@@ -433,6 +474,309 @@ When adding new features:
 - UI state management (enabling/disabling buttons)
 - Network error resilience
 
+## Security Framework
+
+The application implements comprehensive security measures including rate limiting, input validation, security headers, and automated security testing.
+
+### Security Features Implemented
+
+**1. Rate Limiting (express-rate-limit)**
+
+Three tiers of rate limiting protect against abuse and DoS attacks:
+
+```javascript
+// General API: 100 requests per 15 minutes
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+
+// Write operations: 30 requests per 15 minutes
+const strictLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+
+// Ratings: 10 votes per minute (most restrictive)
+const ratingsLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 10 });
+```
+
+**Application:**
+- All `/api/*` routes → general limiter
+- POST/PATCH endpoints → strict limiter
+- `/api/ratings` → ratings limiter (strictest)
+
+**2. Input Validation (express-validator)**
+
+All user input is validated and sanitized:
+
+```javascript
+app.post('/api/ratings',
+  ratingsLimiter,
+  [
+    body('song_id')
+      .trim()                          // Remove whitespace
+      .notEmpty()                      // Required field
+      .isLength({ max: 255 })          // Length limit
+      .matches(/^[a-zA-Z0-9_: -]+$/),  // Character whitelist
+    body('rating')
+      .isIn([1, -1])                   // Enum validation
+      .toInt()
+  ],
+  handleValidationErrors,
+  async (req, res) => { /* ... */ }
+);
+```
+
+**Protection against:**
+- SQL injection (parameterized queries + validation)
+- XSS attacks (HTML escaping)
+- Buffer overflows (length limits)
+- Type confusion (type validation)
+- DoS via large inputs (10kb request limit)
+
+**3. Security Headers (helmet.js)**
+
+Helmet adds essential security headers:
+
+```javascript
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+      // ... more directives
+    },
+  },
+  frameguard: { action: 'sameorigin' },  // Prevent clickjacking
+}));
+```
+
+**Headers added:**
+- Content-Security-Policy (prevents XSS)
+- X-Frame-Options (prevents clickjacking)
+- X-Content-Type-Options (prevents MIME sniffing)
+- Strict-Transport-Security (enforces HTTPS)
+- X-XSS-Protection (browser XSS filter)
+
+**4. CORS Configuration**
+
+Production-ready CORS restrictions:
+
+```javascript
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost'
+    : '*',
+  methods: ['GET', 'POST', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+```
+
+**Set in production .env:**
+```
+ALLOWED_ORIGINS=https://radiocalico.com,https://www.radiocalico.com
+```
+
+**5. Database Security**
+
+All queries use parameterized statements:
+
+```javascript
+// GOOD: Parameterized query (always use this)
+await database.get('SELECT * FROM users WHERE id = ?', [userId]);
+
+// BAD: String concatenation (NEVER do this)
+await database.get(`SELECT * FROM users WHERE id = ${userId}`);
+```
+
+**Protection:**
+- SQL injection prevention
+- Database abstraction handles both SQLite and PostgreSQL
+- Automatic placeholder conversion (`?` → `$1, $2, ...` for PostgreSQL)
+
+### Security Testing Tools
+
+The project includes a comprehensive security testing framework with multiple tools:
+
+**Dependency Scanning:**
+- **npm audit** - Built-in vulnerability scanner
+- **Snyk** - Enhanced dependency scanning with larger vulnerability database
+
+**Static Analysis:**
+- **ESLint + security plugins** - Detects unsafe code patterns
+- **Semgrep** - Pattern-based security scanner for OWASP Top 10
+
+**Container Scanning:**
+- **Trivy** - Scans Docker images for vulnerabilities in OS packages and dependencies
+
+**Dynamic Testing:**
+- **OWASP ZAP** - Dynamic application security testing (penetration testing)
+
+**Make Commands:**
+
+```bash
+# Install security tools
+make security-install
+
+# Quick scan (before commits)
+make security
+
+# Comprehensive scan (before deployments)
+make security-full
+
+# Individual scans
+make security-deps       # Snyk dependency scan
+make security-code       # ESLint + Semgrep
+make security-docker     # Trivy image scan
+make security-api        # OWASP ZAP (requires running server)
+
+# Generate reports
+make security-report     # Detailed JSON + text reports
+```
+
+**Report locations:**
+All security reports are generated in the `reports/` directory:
+- `security-audit.json/txt` - npm audit results
+- `snyk-report.json/txt` - Snyk dependency scan
+- `eslint-security.json/txt` - ESLint findings
+- `semgrep-report.json/txt` - Semgrep analysis
+- `trivy-dev.txt`, `trivy-api.txt`, `trivy-nginx.txt` - Container scans
+- `zap-report.json/html` - OWASP ZAP penetration test results
+
+### Security Documentation
+
+**SECURITY.md** - Comprehensive security testing guide:
+- Tool installation and setup
+- Security testing workflows
+- Detailed testing procedures for each tool
+- Security best practices
+- Vulnerability response process
+- Common vulnerabilities and prevention
+- GDPR/CCPA compliance considerations
+
+**SECURITY-AUDIT-REPORT.md** - Detailed security audit findings:
+- 2 Critical issues identified
+- 4 High severity issues identified
+- 6 Medium severity issues identified
+- 3 Low severity issues identified
+- 10 Positive security findings
+- Prioritized remediation roadmap
+- Production deployment checklist
+
+### Security Best Practices for Development
+
+**Before Every Commit:**
+```bash
+make security          # Run npm audit
+make test              # Ensure tests pass
+# Check for hardcoded secrets
+# Review new code for security issues
+```
+
+**Before Every Deployment:**
+```bash
+make security-full     # Comprehensive security scan
+make test-coverage     # Verify coverage thresholds
+npm outdated           # Check for updates
+# Review HIGH/CRITICAL findings
+# Backup database
+# Set ALLOWED_ORIGINS in .env
+# Verify HTTPS is configured
+```
+
+**Common Security Pitfalls to Avoid:**
+
+❌ **BAD:**
+```javascript
+// String interpolation in SQL
+await db.get(`SELECT * FROM users WHERE name = '${userName}'`);
+
+// Using .innerHTML with user data
+element.innerHTML = userData;
+
+// No input validation
+const { email } = req.body;
+await sendEmail(email);
+
+// Exposing detailed errors
+res.status(500).json({ error: error.stack });
+```
+
+✅ **GOOD:**
+```javascript
+// Parameterized queries
+await db.get('SELECT * FROM users WHERE name = ?', [userName]);
+
+// Using .textContent (safe)
+element.textContent = userData;
+
+// Input validation
+body('email').trim().isEmail().normalizeEmail()
+
+// Generic errors in production
+res.status(500).json({ error: 'Internal server error' });
+```
+
+### Production Security Checklist
+
+**Critical (Must Fix Before Production):**
+- [ ] Configure HTTPS/TLS in nginx
+- [ ] Set `ALLOWED_ORIGINS` environment variable
+- [ ] Add authentication for admin endpoints
+- [ ] Implement CSRF protection
+- [ ] Sanitize error messages (no stack traces)
+- [ ] Set `NODE_ENV=production`
+- [ ] Use strong passwords for PostgreSQL
+- [ ] Review and address all HIGH/CRITICAL security findings
+
+**Recommended:**
+- [ ] Add structured logging (Winston)
+- [ ] Set up monitoring and alerting
+- [ ] Configure request timeouts
+- [ ] Review GDPR compliance (IP storage)
+- [ ] Add anomaly detection for vote manipulation
+- [ ] Set up automated security scans in CI/CD
+- [ ] Regular security audits (monthly/quarterly)
+
+### Security Monitoring
+
+**What to Monitor:**
+- Rate limit violations (potential attacks)
+- Failed validation attempts (malicious input)
+- Unusual voting patterns (vote manipulation)
+- Database errors (possible injection attempts)
+- Authentication failures (when implemented)
+- Large request payloads (DoS attempts)
+
+**Logging Best Practices:**
+- Log all security events
+- Don't log sensitive data (passwords, tokens, PII)
+- Use structured logging (JSON format)
+- Rotate logs regularly
+- Monitor logs for suspicious patterns
+- Set up alerts for critical events
+
+### Known Security Limitations
+
+⚠️ **Current Limitations:**
+
+1. **No Authentication** - All endpoints are public
+   - Impact: Anyone can view feedback, modify request status
+   - Mitigation: Add JWT or API key authentication before production
+
+2. **No CSRF Protection** - Cross-site request forgery possible
+   - Impact: Low currently (no auth), will be critical when auth added
+   - Mitigation: Implement csurf middleware
+
+3. **Client-side fingerprinting** - Can be bypassed
+   - Impact: Vote manipulation possible (but rate-limited)
+   - Mitigation: Server-side fingerprint is primary defense
+
+4. **IP Address Storage** - GDPR concern
+   - Impact: May require user consent, data deletion API
+   - Mitigation: Consider hashing IPs or removing column
+
+5. **No HTTPS in Development** - Acceptable for dev, critical for production
+   - Impact: Data transmitted in cleartext
+   - Mitigation: Configure SSL/TLS certificates in nginx for production
+
+See `SECURITY-AUDIT-REPORT.md` for detailed findings and remediation steps.
+
 ## Known Issues and Quirks
 
 - **Docker Desktop must be running:** Before any `docker` or `docker-compose` commands, Docker Desktop must be started and running. Common error if not running: `open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified`. Solution: Start Docker Desktop from Start Menu, wait for whale icon in system tray to be steady, verify with `docker ps`.
@@ -528,9 +872,13 @@ docker-compose exec radio-calico-dev npm run test:coverage
 - `RUNDOCKER.md` - Quick reference guide with copy-paste Docker commands (gitignored personal file)
 
 ### Configuration & Documentation
-- `package.json` - Dependencies and npm scripts (including test commands)
+- `package.json` - Dependencies and npm scripts (including test and security commands)
+- `Makefile` - Convenient shortcuts for development, testing, security, and Docker workflows
+- `.eslintrc.json` - ESLint configuration with security plugins
 - `CLAUDE.md` - This file (project memory for Claude Code)
 - `README.md` - User-facing documentation
+- `SECURITY.md` - Comprehensive security testing guide and best practices
+- `SECURITY-AUDIT-REPORT.md` - Detailed security audit findings and remediation roadmap
 - `.gitignore` - Git ignore rules (organized by category: dependencies, runtime data, secrets, logs, personal files, Docker runtime)
 
 ### Design Reference
@@ -554,11 +902,11 @@ docker-compose exec radio-calico-dev npm run test:coverage
 - **Why these are tracked:** Team collaboration, CI/CD pipelines, consistent environments, documentation
 
 **Documentation:**
-- `README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`
+- `README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`, `SECURITY.md`, `SECURITY-AUDIT-REPORT.md`
 - Design files: `RadioCalico_Style_Guide.txt`, `RadioCalicoLayout.png`
 
 **Configuration:**
-- `package.json`, `jest.config.js`
+- `package.json`, `jest.config.js`, `Makefile`, `.eslintrc.json`
 
 ### What's Ignored by Git (.gitignore)
 
@@ -574,6 +922,9 @@ docker-compose exec radio-calico-dev npm run test:coverage
 
 **Test & Build Artifacts:**
 - `coverage/` - Test coverage reports (regenerated with `npm run test:coverage`)
+- `reports/` - Security audit reports (generated by `make security-report` and `make security-full`)
+- `backups/` - Database backups (generated by `make db-backup`)
+- `.snyk` - Snyk configuration and cache
 
 **Personal Files:**
 - `RUNDOCKER.md` - User's personal Docker reference (not needed in repo)
@@ -852,6 +1203,19 @@ docker system prune -a        # Clean up all unused Docker resources
 - All test helpers are well-documented with JSDoc comments
 - Test files mirror the structure of source files for easy navigation
 - In-memory databases ensure tests are fast and don't pollute the production database
+
+### Security Best Practices
+- **Always run security scans before committing:** `make security` to check for vulnerabilities
+- **Comprehensive scan before deployment:** `make security-full` runs all security tools
+- **Never use string interpolation in SQL queries:** Always use parameterized queries with `?` placeholders
+- **Always validate user input:** Use express-validator on all API endpoints
+- **Never expose detailed errors in production:** Use generic error messages, log details server-side
+- **Never commit secrets:** Use environment variables for passwords, API keys, tokens
+- **Always use HTTPS in production:** Configure SSL/TLS certificates in nginx
+- **Review security reports regularly:** Check `reports/` directory for findings
+- **Keep dependencies updated:** Run `npm outdated` and `npm update` regularly
+- **Follow the Security Framework guidelines:** See Security Framework section above for detailed practices
+- **Read security documentation:** Refer to `SECURITY.md` for comprehensive testing procedures and `SECURITY-AUDIT-REPORT.md` for current security status
 
 ### Docker Best Practices
 - **Development:** Use `docker-compose up` for local development with hot-reloading

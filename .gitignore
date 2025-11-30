@@ -23,6 +23,11 @@ logs
 # Test coverage
 coverage
 
+# Security reports and backups
+reports
+backups
+.snyk
+
 # Personal reference files
 RUNDOCKER.md
 

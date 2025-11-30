@@ -2,24 +2,99 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { body, param, query, validationResult } = require('express-validator');
 const database = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// ============= SECURITY MIDDLEWARE =============
+
+// Helmet - Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+      imgSrc: ["'self'", "data:", "https:"],
+      mediaSrc: ["'self'", "https://d3d4yli4hf5bmh.cloudfront.net"],
+      connectSrc: ["'self'", "https://d3d4yli4hf5bmh.cloudfront.net"],
+    },
+  },
+  // Allow frames from same origin for embedding
+  frameguard: { action: 'sameorigin' },
+}));
+
+// CORS - Restrict to specific origins in production
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost'
+    : '*',
+  methods: ['GET', 'POST', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400, // 24 hours
+};
+app.use(cors(corsOptions));
+
+// Rate limiting - Different limits for different endpoint types
+// Configure trust proxy to prevent X-Forwarded-For spoofing
+const rateLimitConfig = {
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  trustProxy: 1, // Trust first proxy (prevents header spoofing)
+};
+
+const generalLimiter = rateLimit({
+  ...rateLimitConfig,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+});
+
+const strictLimiter = rateLimit({
+  ...rateLimitConfig,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Stricter limit for write operations
+  message: 'Too many submissions from this IP, please try again later.',
+});
+
+const ratingsLimiter = rateLimit({
+  ...rateLimitConfig,
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 10, // 10 votes per minute per IP
+  message: 'Too many rating submissions, please slow down.',
+  // Use fingerprint-based key for additional protection
+  keyGenerator: (req) => getUserFingerprint(req),
+});
+
+// Apply general rate limiting to all API routes
+app.use('/api/', generalLimiter);
+
+// Body parsing middleware
+app.use(express.json({ limit: '10kb' })); // Limit request body size
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// Serve static files
 app.use(express.static('public'));
 
 // Helper function to get client IP address
 function getClientIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-         req.headers['x-real-ip'] ||
-         req.connection.remoteAddress ||
-         req.socket.remoteAddress ||
-         req.connection.socket?.remoteAddress ||
+  const forwardedFor = req.headers['x-forwarded-for'];
+
+  // Handle x-forwarded-for being an array or string
+  if (forwardedFor) {
+    const ip = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0];
+    return ip.trim();
+  }
+
+  return req.headers['x-real-ip'] ||
+         req.connection?.remoteAddress ||
+         req.socket?.remoteAddress ||
+         req.connection?.socket?.remoteAddress ||
          'unknown';
 }
 
@@ -39,16 +114,56 @@ function getUserFingerprint(req) {
   return crypto.createHash('sha256').update(fingerprintString).digest('hex');
 }
 
+// Helper function to handle validation errors
+function handleValidationErrors(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: errors.array().map(err => ({
+        field: err.path,
+        message: err.msg
+      }))
+    });
+  }
+  next();
+}
+
+// Helper function to format error responses safely
+function formatError(error, statusCode = 500) {
+  if (process.env.NODE_ENV === 'production') {
+    // Generic error in production to avoid exposing internals
+    console.error('Error:', error);
+    return {
+      status: statusCode,
+      body: { error: 'Internal server error' }
+    };
+  } else {
+    // Detailed error in development for debugging
+    console.error('Error:', error);
+    return {
+      status: statusCode,
+      body: { error: error.message }
+    };
+  }
+}
+
 // ============= LISTENERS API =============
 
 // Register new listener or update existing
-app.post('/api/listeners', async (req, res) => {
+app.post('/api/listeners',
+  strictLimiter,
+  [
+    body('session_id')
+      .trim()
+      .notEmpty().withMessage('session_id is required')
+      .isLength({ max: 255 }).withMessage('session_id too long')
+      .matches(/^[a-zA-Z0-9_-]+$/).withMessage('session_id contains invalid characters')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { session_id } = req.body;
-
-    if (!session_id) {
-      return res.status(400).json({ error: 'session_id is required' });
-    }
 
     const existing = await database.get('SELECT * FROM listeners WHERE session_id = ?', [session_id]);
 
@@ -62,7 +177,8 @@ app.post('/api/listeners', async (req, res) => {
       res.json({ message: 'Listener registered', id: result.lastInsertRowid });
     }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -77,20 +193,27 @@ app.get('/api/listeners/stats', async (req, res) => {
     `);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // ============= LISTENING SESSIONS API =============
 
 // Start listening session
-app.post('/api/sessions/start', async (req, res) => {
+app.post('/api/sessions/start',
+  strictLimiter,
+  [
+    body('session_id')
+      .trim()
+      .notEmpty().withMessage('session_id is required')
+      .isLength({ max: 255 }).withMessage('session_id too long')
+      .matches(/^[a-zA-Z0-9_-]+$/).withMessage('session_id contains invalid characters')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { session_id } = req.body;
-
-    if (!session_id) {
-      return res.status(400).json({ error: 'session_id is required' });
-    }
 
     const listener = await database.get('SELECT id FROM listeners WHERE session_id = ?', [session_id]);
 
@@ -102,18 +225,27 @@ app.post('/api/sessions/start', async (req, res) => {
 
     res.json({ message: 'Session started', session_id: result.lastInsertRowid });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // End listening session
-app.post('/api/sessions/end', async (req, res) => {
+app.post('/api/sessions/end',
+  strictLimiter,
+  [
+    body('session_id')
+      .trim()
+      .notEmpty().withMessage('session_id is required')
+      .isLength({ max: 255 }).withMessage('session_id too long')
+      .matches(/^[a-zA-Z0-9_-]+$/).withMessage('session_id contains invalid characters'),
+    body('listening_session_id')
+      .isInt({ min: 1 }).withMessage('listening_session_id must be a positive integer')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { session_id, listening_session_id } = req.body;
-
-    if (!session_id || !listening_session_id) {
-      return res.status(400).json({ error: 'session_id and listening_session_id are required' });
-    }
 
     const session = await database.get('SELECT * FROM listening_sessions WHERE id = ?', [listening_session_id]);
 
@@ -141,20 +273,42 @@ app.post('/api/sessions/end', async (req, res) => {
 
     res.json({ message: 'Session ended', duration_minutes: duration });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // ============= SONG REQUESTS API =============
 
 // Submit song request
-app.post('/api/requests', async (req, res) => {
+app.post('/api/requests',
+  strictLimiter,
+  [
+    body('listener_name')
+      .optional()
+      .trim()
+      .isLength({ max: 100 }).withMessage('listener_name too long')
+      .escape(),
+    body('song_title')
+      .trim()
+      .notEmpty().withMessage('song_title is required')
+      .isLength({ max: 255 }).withMessage('song_title too long')
+      .escape(),
+    body('artist')
+      .optional()
+      .trim()
+      .isLength({ max: 255 }).withMessage('artist too long')
+      .escape(),
+    body('message')
+      .optional()
+      .trim()
+      .isLength({ max: 1000 }).withMessage('message too long')
+      .escape()
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { listener_name, song_title, artist, message } = req.body;
-
-    if (!song_title) {
-      return res.status(400).json({ error: 'song_title is required' });
-    }
 
     const result = await database.run(`
       INSERT INTO song_requests (listener_name, song_title, artist, message)
@@ -166,29 +320,43 @@ app.post('/api/requests', async (req, res) => {
       id: result.lastInsertRowid
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // Get all song requests
-app.get('/api/requests', async (req, res) => {
+app.get('/api/requests',
+  [
+    query('status')
+      .optional()
+      .isIn(['pending', 'approved', 'played', 'rejected']).withMessage('Invalid status value')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const status = req.query.status || 'pending';
     const requests = await database.all('SELECT * FROM song_requests WHERE status = ? ORDER BY created_at DESC', [status]);
     res.json(requests);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // Update request status
-app.patch('/api/requests/:id', async (req, res) => {
+app.patch('/api/requests/:id',
+  strictLimiter,
+  [
+    param('id')
+      .isInt({ min: 1 }).withMessage('Invalid request ID'),
+    body('status')
+      .isIn(['pending', 'approved', 'played', 'rejected']).withMessage('Invalid status value')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { status } = req.body;
-
-    if (!['pending', 'approved', 'played', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
 
     const result = await database.run('UPDATE song_requests SET status = ? WHERE id = ?', [status, req.params.id]);
 
@@ -198,24 +366,40 @@ app.patch('/api/requests/:id', async (req, res) => {
 
     res.json({ message: 'Request updated' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // ============= FEEDBACK API =============
 
 // Submit feedback
-app.post('/api/feedback', async (req, res) => {
+app.post('/api/feedback',
+  strictLimiter,
+  [
+    body('listener_name')
+      .optional()
+      .trim()
+      .isLength({ max: 100 }).withMessage('listener_name too long')
+      .escape(),
+    body('email')
+      .optional()
+      .trim()
+      .isEmail().withMessage('Invalid email format')
+      .normalizeEmail(),
+    body('message')
+      .trim()
+      .notEmpty().withMessage('message is required')
+      .isLength({ max: 2000 }).withMessage('message too long')
+      .escape(),
+    body('rating')
+      .optional()
+      .isInt({ min: 1, max: 5 }).withMessage('rating must be between 1 and 5')
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { listener_name, email, message, rating } = req.body;
-
-    if (!message) {
-      return res.status(400).json({ error: 'message is required' });
-    }
-
-    if (rating && (rating < 1 || rating > 5)) {
-      return res.status(400).json({ error: 'rating must be between 1 and 5' });
-    }
 
     const result = await database.run(`
       INSERT INTO feedback (listener_name, email, message, rating)
@@ -227,7 +411,8 @@ app.post('/api/feedback', async (req, res) => {
       id: result.lastInsertRowid
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -237,7 +422,8 @@ app.get('/api/feedback', async (req, res) => {
     const feedback = await database.all('SELECT * FROM feedback ORDER BY created_at DESC');
     res.json(feedback);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
@@ -253,26 +439,38 @@ app.get('/api/feedback/rating', async (req, res) => {
     `);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // ============= SONG RATINGS API =============
 
 // Submit song rating
-app.post('/api/ratings', async (req, res) => {
+app.post('/api/ratings',
+  ratingsLimiter, // Stricter rate limit for ratings
+  [
+    body('song_id')
+      .trim()
+      .notEmpty().withMessage('song_id is required')
+      .isLength({ max: 255 }).withMessage('song_id too long'),
+      // Note: No character restrictions - song titles can contain unicode, special chars, etc.
+      // SQL injection is prevented by parameterized queries
+    body('session_id')
+      .trim()
+      .notEmpty().withMessage('session_id is required')
+      .isLength({ max: 255 }).withMessage('session_id too long')
+      .matches(/^[a-zA-Z0-9_-]+$/).withMessage('session_id contains invalid characters'),
+    body('rating')
+      .isIn([1, -1, '1', '-1']).withMessage('rating must be 1 (thumbs up) or -1 (thumbs down)')
+      .toInt()
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { song_id, session_id, rating } = req.body;
     const ip_address = getClientIP(req);
     const user_fingerprint = getUserFingerprint(req);
-
-    if (!song_id || !session_id) {
-      return res.status(400).json({ error: 'song_id and session_id are required' });
-    }
-
-    if (rating !== 1 && rating !== -1) {
-      return res.status(400).json({ error: 'rating must be 1 (thumbs up) or -1 (thumbs down)' });
-    }
 
     // Check if user already voted
     const existingVote = await database.get(`
@@ -320,13 +518,22 @@ app.post('/api/ratings', async (req, res) => {
       user_rating: rating
     });
   } catch (error) {
-    console.error('Error submitting rating:', error);
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
 // Get ratings for a song
-app.get('/api/ratings/:song_id', async (req, res) => {
+app.get('/api/ratings/:song_id',
+  [
+    param('song_id')
+      .trim()
+      .notEmpty().withMessage('song_id is required')
+      .isLength({ max: 255 }).withMessage('song_id too long')
+      // Note: No character restrictions - song titles can contain unicode, special chars, etc.
+  ],
+  handleValidationErrors,
+  async (req, res) => {
   try {
     const { song_id } = req.params;
     const user_fingerprint = getUserFingerprint(req);
@@ -358,7 +565,8 @@ app.get('/api/ratings/:song_id', async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const err = formatError(error);
+    res.status(err.status).json(err.body);
   }
 });
 
