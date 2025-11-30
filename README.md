@@ -865,9 +865,14 @@ PORT=3001 npm start
 - Check file permissions on `radio.db`
 
 ### HLS Stream Not Playing
-- Check network console for CORS errors
+- Check network console for CORS or CSP errors
 - Verify stream URL is accessible: `curl https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
+- Check Content Security Policy allows CloudFront: `curl -I http://localhost:3000/`
+  - Should include: `media-src 'self' https://d3d4yli4hf5bmh.cloudfront.net blob:`
+  - Should include: `connect-src 'self' https://d3d4yli4hf5bmh.cloudfront.net`
+  - Should include: `worker-src 'self' blob:` (for HLS.js web workers)
 - Try a different browser (Safari has native HLS support)
+- Hard refresh browser cache: `Ctrl+F5` (Windows) or `Cmd+Shift+R` (Mac)
 
 ### Vote Counts Not Updating
 - Check browser console for JavaScript errors

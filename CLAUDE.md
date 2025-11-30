@@ -102,10 +102,21 @@ docker-compose -f docker-compose.prod.yml down             # Stop all
 2. Reverse proxies `/api/*` to `http://radio-calico-api:3000` (preserves client IP)
 3. Adds security headers (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection)
 4. Health check at `/health`
+5. Content Security Policy (CSP) for CloudFront resources
+
+**CSP Configuration (Critical for HLS Streaming):**
+The nginx.conf includes a Content Security Policy that allows:
+- `media-src 'self' https://d3d4yli4hf5bmh.cloudfront.net blob:` - HLS media segments
+- `img-src 'self' data: https://d3d4yli4hf5bmh.cloudfront.net` - Album art from CloudFront
+- `connect-src 'self' https://d3d4yli4hf5bmh.cloudfront.net https://cdn.jsdelivr.net` - Metadata API and HLS.js source maps
+- `worker-src 'self' blob:` - HLS.js web workers
+- `script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net` - HLS.js library
+
+**IMPORTANT:** If HLS stream doesn't play, verify CSP headers with `curl -I http://localhost:3000/`
 
 **Benefits:** Performance (static file optimization), security (only nginx exposed), flexibility (HTTPS, rate limiting), scalability
 
-**Customize:** Edit `nginx.conf` → rebuild → `docker-compose -f docker-compose.prod.yml up -d --build nginx`
+**Customize:** Edit `nginx.conf` → reload → `docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload`
 
 ### Frontend Structure (public/)
 
@@ -343,6 +354,53 @@ See Database Management section in DOCKER.md for comprehensive backup/restore co
 5. Monitor: `docker-compose -f docker-compose.prod.yml logs -f`
 6. Backup database before updates
 
+## Troubleshooting
+
+### Production HLS Stream Issues
+
+**Problem:** Play button not working, album art not showing, metadata not updating
+
+**Root Cause:** Content Security Policy (CSP) blocking CloudFront resources
+
+**Solution:**
+1. Verify CSP headers include CloudFront domains:
+   ```bash
+   curl -I http://localhost:3000/ | grep "Content-Security-Policy"
+   ```
+2. Check nginx.conf has correct CSP directives (see Nginx section above)
+3. Reload nginx configuration:
+   ```bash
+   docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload
+   ```
+4. Hard refresh browser: `Ctrl+F5` (Windows) or `Cmd+Shift+R` (Mac)
+
+**Browser Console Errors:**
+- `NotSupportedError: Failed to load` → CSP blocking media-src or blob:
+- `Blocked by CSP` → Add missing domain to appropriate CSP directive
+- `Network error` → Check connect-src includes CloudFront
+
+### Docker Build Failures
+
+**Problem:** `npm ci --only=production` fails with missing Python/build tools
+
+**Root Cause:** better-sqlite3 requires native compilation in production stage
+
+**Solution:** Copy pre-built node_modules from builder stage instead of rebuilding
+```dockerfile
+# In Dockerfile.prod, production stage:
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+```
+
+### PostgreSQL Connection Issues
+
+**Problem:** API can't connect to database in production
+
+**Solution:**
+1. Verify `.env` file exists with `POSTGRES_PASSWORD` set
+2. Check all 3 containers are running: `docker ps`
+3. Check postgres container health: `docker-compose -f docker-compose.prod.yml ps`
+4. View postgres logs: `docker-compose -f docker-compose.prod.yml logs postgres`
+
 ## Known Issues
 
 - **Docker Desktop required:** Must be running before docker commands (Start Menu → wait for steady whale icon → verify `docker ps`)
@@ -356,6 +414,7 @@ See Database Management section in DOCKER.md for comprehensive backup/restore co
 - **Docker on Windows:** Use PowerShell or WSL (Git Bash may have path mounting issues)
 - **Hot-reload in Docker:** Frontend instant, `server.js`/`db.js` ~2-3s (nodemon)
 - **Ports:** Dev=3000, Prod=80 (nginx) with API on internal 3000
+- **CSP strict:** CloudFront domains must be explicitly allowed in nginx.conf CSP headers
 
 ## File Reference
 
