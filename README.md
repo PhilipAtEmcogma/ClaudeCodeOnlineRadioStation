@@ -226,6 +226,11 @@ Radio/
 ├── Makefile                       # Development, testing, security, and Docker shortcuts
 ├── .env.example                   # Environment variables template
 ├── radio.db                       # SQLite database (dev, auto-created, gitignored)
+├── .github/
+│   └── workflows/                # GitHub Actions CI/CD workflows
+│       ├── ci.yml                 # Main CI pipeline (tests, security, Docker)
+│       ├── security-full.yml      # Comprehensive security scanning
+│       └── README.md              # Workflow documentation
 ├── public/
 │   ├── index.html                # Radio player HTML structure
 │   ├── app.js                    # Client-side JavaScript (player logic)
@@ -275,6 +280,7 @@ Radio/
 **Files tracked in Git (committed to repository):**
 - ✅ All Docker configuration files (`Dockerfile*`, `docker-compose*.yml`, `.dockerignore`)
 - ✅ Source code (`server.js`, `db.js`, `public/*`, `tests/*`)
+- ✅ GitHub Actions workflows (`.github/workflows/*.yml`)
 - ✅ Documentation (`README.md`, `CLAUDE.md`, `DOCKER.md`, `TESTING.md`, `SECURITY.md`, `SECURITY-AUDIT-REPORT.md`)
 - ✅ Configuration (`package.json`, `jest.config.js`, `Makefile`, `.eslintrc.json`)
 - ✅ Design assets (`RadioCalico_Style_Guide.txt`, `RadioCalicoLayout.png`)
@@ -357,6 +363,52 @@ Radio/
 ### feedback
 - Stores user feedback and ratings
 - Fields: id, listener_name, email, message, rating, created_at
+
+## CI/CD Pipeline
+
+The project includes automated GitHub Actions workflows for continuous integration and security scanning.
+
+### Workflows
+
+**CI Pipeline** (`.github/workflows/ci.yml`)
+- **Triggers:** Push to master/develop/feature branches, pull requests
+- **Jobs:**
+  - Unit tests (backend + frontend)
+  - Test coverage reporting with Codecov integration
+  - Security scans (npm audit)
+  - Code quality checks (ESLint)
+  - Docker build verification (dev + production images)
+  - CI summary with aggregated results
+- **Artifacts:** Coverage reports, security reports (30-day retention)
+
+**Comprehensive Security Scan** (`.github/workflows/security-full.yml`)
+- **Triggers:** Weekly (Mondays 2 AM UTC), manual, pushes to master
+- **Jobs:**
+  - npm audit with detailed reports
+  - Snyk dependency scanning (requires `SNYK_TOKEN` secret)
+  - Semgrep static analysis (OWASP Top 10)
+  - Trivy container security scanning
+  - Dependency review for PRs (license + vulnerability checks)
+  - GitHub Security integration (SARIF uploads)
+- **Artifacts:** Full security reports (90-day retention)
+
+### GitHub Actions Setup
+
+1. **Add Secrets** (optional, for enhanced features):
+   - `SNYK_TOKEN` - For Snyk dependency scanning ([get token](https://snyk.io))
+   - `CODECOV_TOKEN` - For coverage reporting ([get token](https://codecov.io))
+
+2. **Enable Branch Protection** (recommended for master):
+   - Require pull request reviews
+   - Require status checks: `Unit Tests`, `Docker Build Test`
+   - Require branches to be up to date
+
+3. **View Results**:
+   - **Actions tab** - Workflow runs and logs
+   - **Security tab** - Code scanning alerts (Trivy, Semgrep)
+   - **Artifacts** - Download coverage and security reports
+
+See `.github/workflows/README.md` for detailed workflow documentation.
 
 ## Testing
 
@@ -813,9 +865,14 @@ PORT=3001 npm start
 - Check file permissions on `radio.db`
 
 ### HLS Stream Not Playing
-- Check network console for CORS errors
+- Check network console for CORS or CSP errors
 - Verify stream URL is accessible: `curl https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8`
+- Check Content Security Policy allows CloudFront: `curl -I http://localhost:3000/`
+  - Should include: `media-src 'self' https://d3d4yli4hf5bmh.cloudfront.net blob:`
+  - Should include: `connect-src 'self' https://d3d4yli4hf5bmh.cloudfront.net`
+  - Should include: `worker-src 'self' blob:` (for HLS.js web workers)
 - Try a different browser (Safari has native HLS support)
+- Hard refresh browser cache: `Ctrl+F5` (Windows) or `Cmd+Shift+R` (Mac)
 
 ### Vote Counts Not Updating
 - Check browser console for JavaScript errors

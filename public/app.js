@@ -99,33 +99,49 @@ audioPlayer.volume = volumeSlider.value / 100;
 
 // Initialize HLS
 function initPlayer() {
+    console.log('initPlayer called. HLS supported:', Hls.isSupported());
+    console.log('Stream URL:', streamUrl);
+
     if (Hls.isSupported()) {
+        console.log('Creating HLS instance...');
         hls = new Hls({
             enableWorker: true,
             lowLatencyMode: true,
             backBufferLength: 90
         });
 
+        console.log('Loading source:', streamUrl);
         hls.loadSource(streamUrl);
         hls.attachMedia(audioPlayer);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            console.log('HLS manifest loaded');
+            console.log('✅ HLS manifest loaded successfully');
+        });
+
+        hls.on(Hls.Events.MEDIA_ATTACHED, function() {
+            console.log('✅ HLS media attached to audio element');
         });
 
         hls.on(Hls.Events.ERROR, function(event, data) {
-            console.error('HLS error:', data);
+            console.error('❌ HLS error:', data);
+            console.error('Error type:', data.type);
+            console.error('Error details:', data.details);
+            console.error('Error fatal:', data.fatal);
+
             if (data.fatal) {
                 switch(data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.error('Network error - attempting retry');
                         updateStatus('Network error - retrying...', 'loading');
                         hls.startLoad();
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.error('Media error - attempting recovery');
                         updateStatus('Media error - recovering...', 'loading');
                         hls.recoverMediaError();
                         break;
                     default:
+                        console.error('Fatal error - cannot recover');
                         updateStatus('Fatal error - please refresh', 'stopped');
                         stopTimer();
                         hls.destroy();
@@ -135,8 +151,10 @@ function initPlayer() {
         });
     } else if (audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
+        console.log('Using native HLS support (Safari)');
         audioPlayer.src = streamUrl;
     } else {
+        console.error('HLS is not supported in this browser');
         alert('HLS is not supported in your browser');
     }
 }
@@ -189,14 +207,20 @@ function updateNowPlaying(data) {
     const bitDepth = data.bit_depth || 16;
     const sampleRate = data.sample_rate || 44100;
 
+    console.log(`📊 Quality update - Bit depth: ${bitDepth}, Sample rate: ${sampleRate}Hz`);
+
     // Update source quality (original file quality)
-    sourceQuality.textContent = `Source quality: ${bitDepth}-bit ${(sampleRate / 1000).toFixed(1)}kHz`;
+    const sourceQualityText = `Source quality: ${bitDepth}-bit ${(sampleRate / 1000).toFixed(1)}kHz`;
+    sourceQuality.textContent = sourceQualityText;
+    console.log(`✅ Source quality updated: ${sourceQualityText}`);
 
     // Update stream quality (how it's being delivered - typically upsampled to 48kHz)
     // The stream is always 48kHz FLAC/HLS Lossless regardless of source
     const streamSampleRate = 48; // kHz - our stream is always 48kHz
     const streamFormat = 'FLAC / HLS Lossless';
-    streamQuality.textContent = `Stream quality: ${streamSampleRate}kHz ${streamFormat}`;
+    const streamQualityText = `Stream quality: ${streamSampleRate}kHz ${streamFormat}`;
+    streamQuality.textContent = streamQualityText;
+    console.log(`✅ Stream quality updated: ${streamQualityText}`);
 
     // Update recently played from server data
     renderRecentlyPlayed(data);
@@ -372,13 +396,20 @@ function resetTimer() {
 
 // Play/Pause functionality
 playButton.addEventListener('click', function() {
+    console.log('Play button clicked. isPlaying:', isPlaying, 'hls:', !!hls, 'HLS supported:', Hls.isSupported());
+
     if (!hls && Hls.isSupported()) {
+        console.log('Initializing HLS player...');
         initPlayer();
     }
 
     if (!isPlaying) {
+        console.log('Attempting to play audio...');
+        updateStatus('Loading...', 'loading');
+
         audioPlayer.play()
             .then(() => {
+                console.log('Audio playback started successfully');
                 isPlaying = true;
                 playButton.textContent = '⏸';
                 updateStatus('Playing', 'playing');
@@ -387,9 +418,21 @@ playButton.addEventListener('click', function() {
             })
             .catch(error => {
                 console.error('Play error:', error);
-                updateStatus('Error playing stream', 'stopped');
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+
+                // Check for common autoplay errors
+                if (error.name === 'NotAllowedError') {
+                    updateStatus('Click play again (browser autoplay policy)', 'stopped');
+                    alert('Browser blocked autoplay. Please click play again.');
+                } else if (error.name === 'NotSupportedError') {
+                    updateStatus('Media format not supported', 'stopped');
+                } else {
+                    updateStatus('Error playing stream: ' + error.message, 'stopped');
+                }
             });
     } else {
+        console.log('Pausing audio...');
         audioPlayer.pause();
         isPlaying = false;
         playButton.textContent = '▶';

@@ -25,6 +25,9 @@ TESTING.md
 jest.config.js
 *.test.js
 
+# Security reports
+reports
+
 # Documentation
 README.md
 CLAUDE.md
