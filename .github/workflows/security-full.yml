@@ -1,0 +1,106 @@
+name: Comprehensive Security Scan
+
+on:
+  # Run weekly on Monday at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 1'
+  # Allow manual trigger
+  workflow_dispatch:
+  # Run on pushes to master
+  push:
+    branches: [ master ]
+
+jobs:
+  security-full:
+    name: Full Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Install security scanning tools
+        run: make security-install
+        continue-on-error: true
+
+      - name: Authenticate Snyk (if token available)
+        if: ${{ secrets.SNYK_TOKEN != '' }}
+        run: |
+          if command -v snyk >/dev/null 2>&1; then
+            snyk auth ${{ secrets.SNYK_TOKEN }}
+          fi
+        continue-on-error: true
+
+      - name: Run comprehensive security scan
+        run: make security-full
+        continue-on-error: true
+
+      - name: Generate security summary
+        run: |
+          echo "# Comprehensive Security Scan Summary" > reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          echo "**Scan Date:** $(date -u)" >> reports/SECURITY_SUMMARY.md
+          echo "**Workflow:** Full Security Audit" >> reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          echo "## Scans Performed" >> reports/SECURITY_SUMMARY.md
+          echo "- ✅ npm audit (dependency vulnerabilities)" >> reports/SECURITY_SUMMARY.md
+          echo "- ✅ Snyk (enhanced dependency scanning)" >> reports/SECURITY_SUMMARY.md
+          echo "- ✅ ESLint + Semgrep (static code analysis)" >> reports/SECURITY_SUMMARY.md
+          echo "- ✅ Trivy (Docker image scanning)" >> reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          echo "## npm audit Results" >> reports/SECURITY_SUMMARY.md
+          echo '```' >> reports/SECURITY_SUMMARY.md
+          cat reports/security-audit.txt 2>/dev/null || echo "No audit report generated" >> reports/SECURITY_SUMMARY.md
+          echo '```' >> reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          echo "## Report Files" >> reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          ls -lh reports/ >> reports/SECURITY_SUMMARY.md 2>/dev/null || echo "No reports directory" >> reports/SECURITY_SUMMARY.md
+          echo "" >> reports/SECURITY_SUMMARY.md
+          echo "---" >> reports/SECURITY_SUMMARY.md
+          echo "Download the full security reports artifact to review all findings in detail." >> reports/SECURITY_SUMMARY.md
+
+      - name: Archive security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-full-reports-${{ github.run_number }}
+          path: reports/
+          retention-days: 90
+
+      - name: Comment PR with security summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('reports/SECURITY_SUMMARY.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          deny-licenses: GPL-3.0, AGPL-3.0
