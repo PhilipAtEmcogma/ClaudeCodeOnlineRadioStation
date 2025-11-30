@@ -18,7 +18,7 @@ All passwords, API keys, and sensitive credentials are properly secured using en
 **Password Storage:**
 ```
 Location: .env file (gitignored)
-Variable: POSTGRES_PASSWORD=RadioCalico2024ProdSecurePostgreSQL
+Variable: POSTGRES_PASSWORD=<REDACTED>
 Status: NOT tracked by git ✅
 ```
 
@@ -132,7 +132,7 @@ POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 POSTGRES_DB=radio
 POSTGRES_USER=radio
-POSTGRES_PASSWORD=RadioCalico2024ProdSecurePostgreSQL  # ⚠️ Change for production deployment
+POSTGRES_PASSWORD=<REDACTED - Use strong password generated with: openssl rand -base64 32>
 ```
 
 ## Recommendations
@@ -140,7 +140,7 @@ POSTGRES_PASSWORD=RadioCalico2024ProdSecurePostgreSQL  # ⚠️ Change for produ
 ### 🔴 CRITICAL (Before Production Deployment)
 
 1. **Change PostgreSQL Password**
-   - Current: `RadioCalico2024ProdSecurePostgreSQL`
+   - Current: `<REDACTED - insecure, must be rotated>`
    - Recommended: Generate strong password (30+ characters with special symbols)
    - Use password manager: `openssl rand -base64 32`
 
